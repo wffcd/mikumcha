@@ -7,21 +7,46 @@ const TILES = {
   dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
 };
 const ATTR = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/">CARTO</a>';
+// גיבוי: אם המפה הראשית לא נטענת, עוברים למפות של Esri
+const FALLBACK = {
+  light: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+  dark: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'
+};
+const FALLBACK_LABELS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}';
+const FB_ATTR = 'Tiles © Esri';
+let useFallback = false;
+try { useFallback = localStorage.getItem('mk-tilesFallback') === '1'; } catch (e) { }
 
 export class MapView {
+  static all = [];
   constructor(el, { onTap, onBg, insets }) {
     this.insets = insets; this.onTap = onTap;
     this.map = L.map(el, { zoomControl: false, attributionControl: true, center: [32.08, 34.78], zoom: 12, tap: true });
     this.map.attributionControl.setPrefix(false);
-    this.tiles = null; this.theme = null;
+    this.tiles = null; this.theme = null; MapView.all.push(this);
     this.markers = new Map(); this.me = null; this.dest = null;
     this.trail = null; this.ahead = null; this.start = null;
     if (onBg) this.map.on('click', onBg);
   }
-  setTheme(dark) {
-    const t = dark ? 'dark' : 'light'; if (t === this.theme) return; this.theme = t;
+  setTheme(dark, force) {
+    const t = dark ? 'dark' : 'light'; if (t === this.theme && !force) return; this.theme = t;
     if (this.tiles) this.tiles.remove();
+    if (this.labels) { this.labels.remove(); this.labels = null; }
+    if (useFallback) {
+      this.tiles = L.tileLayer(FALLBACK[t], { attribution: FB_ATTR, maxZoom: 19, maxNativeZoom: t === 'dark' ? 16 : 19 }).addTo(this.map);
+      if (t === 'dark') this.labels = L.tileLayer(FALLBACK_LABELS, { maxZoom: 19, maxNativeZoom: 16, pane: 'overlayPane' }).addTo(this.map);
+      return;
+    }
+    let errors = 0, loaded = 0;
     this.tiles = L.tileLayer(TILES[t], { attribution: ATTR, subdomains: 'abcd', maxZoom: 19, detectRetina: true }).addTo(this.map);
+    this.tiles.on('tileload', () => loaded++);
+    this.tiles.on('tileerror', () => {
+      if (++errors >= 4 && loaded < 2 && !useFallback) {
+        useFallback = true;
+        try { localStorage.setItem('mk-tilesFallback', '1'); } catch (e) { }
+        MapView.all.forEach(m => m.setTheme(m.theme === 'dark', true));
+      }
+    });
   }
   refresh() { this.map.invalidateSize(); }
 
