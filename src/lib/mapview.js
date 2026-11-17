@@ -2,11 +2,9 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { esc, initial } from './util.js';
 
-const TILES = {
-  light: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-  dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-};
-const ATTR = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/">CARTO</a>';
+// OpenStreetMap: חינם ובלי מפתח. במצב כהה המפה עוברת היפוך צבעים.
+const OSM = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const ATTR = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 // גיבוי: אם המפה הראשית לא נטענת, עוברים למפות של Esri
 const FALLBACK = {
   light: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
@@ -15,7 +13,7 @@ const FALLBACK = {
 const FALLBACK_LABELS = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}';
 const FB_ATTR = 'Tiles © Esri';
 let useFallback = false;
-try { useFallback = localStorage.getItem('mk-tilesFallback') === '1'; } catch (e) { }
+try { localStorage.removeItem('mk-tilesFallback'); } catch (e) { }
 
 export class MapView {
   static all = [];
@@ -33,17 +31,18 @@ export class MapView {
     if (this.tiles) this.tiles.remove();
     if (this.labels) { this.labels.remove(); this.labels = null; }
     if (useFallback) {
+      this.map.getContainer().classList.remove('dark-tiles');
       this.tiles = L.tileLayer(FALLBACK[t], { attribution: FB_ATTR, maxZoom: 19, maxNativeZoom: t === 'dark' ? 16 : 19 }).addTo(this.map);
       if (t === 'dark') this.labels = L.tileLayer(FALLBACK_LABELS, { maxZoom: 19, maxNativeZoom: 16, pane: 'overlayPane' }).addTo(this.map);
       return;
     }
     let errors = 0, loaded = 0;
-    this.tiles = L.tileLayer(TILES[t], { attribution: ATTR, subdomains: 'abcd', maxZoom: 19, detectRetina: true }).addTo(this.map);
+    this.map.getContainer().classList.toggle('dark-tiles', t === 'dark');
+    this.tiles = L.tileLayer(OSM, { attribution: ATTR, maxZoom: 19 }).addTo(this.map);
     this.tiles.on('tileload', () => loaded++);
     this.tiles.on('tileerror', () => {
       if (++errors >= 4 && loaded < 2 && !useFallback) {
         useFallback = true;
-        try { localStorage.setItem('mk-tilesFallback', '1'); } catch (e) { }
         MapView.all.forEach(m => m.setTheme(m.theme === 'dark', true));
       }
     });
