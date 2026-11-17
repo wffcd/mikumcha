@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "150909574270",
+    "project_id": "mikumcha-d1ea9",
+    "storage_bucket": "mikumcha-d1ea9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:150909574270:android:8a8d259efaf2d9b75e4c2f",
+        "android_client_info": {
+          "package_name": "com.mikumcha.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "150909574270-t7617rqi0v0js7oiq0srqkdk7fi9h7r5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCx2nmjtRjpYwxgT-_2-Ae0gKp7mETB1VU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "150909574270-t7617rqi0v0js7oiq0srqkdk7fi9h7r5.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
