@@ -1,0 +1,84 @@
+name: בנייה ופרסום
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      VERSION_CODE: ${{ github.run_number }}
+      VERSION_NAME: 1.0.${{ github.run_number }}
+      VITE_VERSION_CODE: ${{ github.run_number }}
+      VITE_VERSION_NAME: 1.0.${{ github.run_number }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: התקנת חבילות
+        run: npm ci
+
+      - name: בניית אפליקציית האתר
+        run: npm run build
+
+      - name: סנכרון לאנדרואיד
+        run: npx cap sync android
+
+      - name: פענוח מפתח החתימה
+        if: env.KEYSTORE_PASSWORD != ''
+        run: openssl enc -d -aes-256-cbc -pbkdf2 -in keys/release.jks.enc -out android/app/release.jks -pass env:KEYSTORE_PASSWORD
+
+      - name: בניית APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          if [ -f app/release.jks ]; then
+            ./gradlew assembleRelease --no-daemon
+            cp app/build/outputs/apk/release/app-release.apk ../mikumcha.apk
+          else
+            echo "::warning::KEYSTORE_PASSWORD לא הוגדר – בונה גרסת debug"
+            ./gradlew assembleDebug --no-daemon
+            cp app/build/outputs/apk/debug/app-debug.apk ../mikumcha.apk
+          fi
+
+      - name: הכנת אתר ההורדה
+        run: |
+          mkdir -p _site
+          cp -r site/* _site/
+          cp -r dist _site/app
+          cp mikumcha.apk _site/mikumcha.apk
+          SIZE=$(du -m mikumcha.apk | cut -f1)
+          echo "{\"versionCode\": ${VERSION_CODE}, \"versionName\": \"${VERSION_NAME}\", \"sizeMB\": ${SIZE}, \"date\": \"$(date -u +%Y-%m-%d)\"}" > _site/version.json
+          touch _site/.nojekyll
+
+      - name: פרסום ל-GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./_site
+          force_orphan: true
+
+      - name: שמירת ה-APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: mikumcha-apk
+          path: mikumcha.apk

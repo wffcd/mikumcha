@@ -1,0 +1,72 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+
+    // פרופיל ציבורי: שם, תמונה, צבע, קוד
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow write: if signedIn() && uid() == userId;
+    }
+
+    // מספר טלפון -> משתמש (אפשר לבדוק מספר מסוים, אי אפשר לקבל רשימה)
+    match /phones/{phone} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && request.resource.data.uid == uid();
+      allow update, delete: if signedIn() && resource.data.uid == uid() && (request.resource == null || request.resource.data.uid == uid());
+    }
+    match /codes/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() && request.resource.data.uid == uid();
+      allow update, delete: if signedIn() && resource.data.uid == uid() && (request.resource == null || request.resource.data.uid == uid());
+    }
+
+    // מיקום + פרטים פרטיים: רק מי שברשימת הצופים (חברי הקבוצות) רואה
+    match /locations/{userId} {
+      allow read: if signedIn() && (uid() == userId || uid() in resource.data.get('viewers', []));
+      allow write: if signedIn() && uid() == userId;
+      match /trail/{point} {
+        allow read: if signedIn() && (uid() == userId || uid() in get(/databases/$(database)/documents/locations/$(userId)).data.get('viewers', []));
+        allow write: if signedIn() && uid() == userId;
+      }
+    }
+
+    match /groups/{gid} {
+      function members() { return resource.data.members; }
+      function newMembers() { return request.resource.data.members; }
+      function invited() { return exists(/databases/$(database)/documents/invites/$(gid + '_' + uid())); }
+
+      allow list: if signedIn() && uid() in resource.data.members;
+      allow get: if signedIn() && (uid() in resource.data.members || invited());
+      allow create: if signedIn() && request.resource.data.owner == uid() && request.resource.data.members == [uid()];
+      allow delete: if signedIn() && resource.data.owner == uid();
+      allow update: if signedIn() && (
+        // חבר בקבוצה: שינוי שם/סמל
+        (uid() in members() && changed().hasOnly(['name', 'emoji']))
+        // מנהל/ת: הסרת חברים
+        || (uid() == resource.data.owner && changed().hasOnly(['members', 'name', 'emoji'])
+            && uid() in newMembers() && members().toSet().hasAll(newMembers().toSet()))
+        // הצטרפות עצמית – רק עם הזמנה
+        || (changed().hasOnly(['members']) && invited()
+            && newMembers().toSet() == members().toSet().union([uid()].toSet()))
+        // יציאה עצמית (מנהל/ת שיוצא/ת מעביר/ה ניהול לחבר/ה אחר/ת)
+        || (uid() in members() && changed().hasOnly(['members', 'owner'])
+            && newMembers().toSet() == members().toSet().difference([uid()].toSet())
+            && (request.resource.data.owner == resource.data.owner ? uid() != resource.data.owner : request.resource.data.owner in newMembers()))
+      );
+    }
+
+    match /invites/{id} {
+      allow read: if signedIn() && (resource.data.to == uid() || resource.data.from == uid());
+      allow create, update: if signedIn() && request.resource.data.from == uid()
+        && (resource == null || resource.data.from == uid())
+        && id == request.resource.data.gid + '_' + request.resource.data.to
+        && uid() in get(/databases/$(database)/documents/groups/$(request.resource.data.gid)).data.members;
+      allow delete: if signedIn() && (resource.data.to == uid() || resource.data.from == uid());
+    }
+  }
+}

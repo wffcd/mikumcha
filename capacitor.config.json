@@ -1,0 +1,10 @@
+{
+  "appId": "com.mikumcha.app",
+  "appName": "מיקומך",
+  "webDir": "dist",
+  "android": { "useLegacyBridge": true },
+  "plugins": {
+    "FirebaseAuthentication": { "skipNativeAuth": true, "providers": ["google.com"] },
+    "LocalNotifications": { "iconColor": "#2563EB" }
+  }
+}
