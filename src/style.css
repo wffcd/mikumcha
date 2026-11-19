@@ -236,3 +236,4 @@ h2.sh .count{font-size:12px;color:var(--muted);font-weight:400}
 .destseg button.on{background:var(--brandSoft);color:var(--brand);font-weight:700}
 
 .dark-tiles .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.6)}
+.eta.stale{background:linear-gradient(135deg,#78350f,#b45309)}

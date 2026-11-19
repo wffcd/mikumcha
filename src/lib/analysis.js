@@ -38,9 +38,9 @@ export function status(P, alertMin) {
   if (d.kind === 'off') return S('idle', 'לא משתף/ת מיקום כרגע', 'מוסתר');
   const eta = d.etaMin != null && (d.moving || d.startedTrip) ? d.etaMin + ' דק׳' : null;
   const where = d.place?.name ? ' · ' + d.place.name : '';
+  if (d.ageMin > 20 && !d.alert) return S('warn', `לא מעודכן ${fmtDur(d.ageMin)}${d.atDest ? ' · נראה/תה לאחרונה בבית' : d.place?.name ? ' · נראה/תה לאחרונה ב' + d.place.name : ''}`, 'לא מעודכן');
   if (d.atDest) return S('ok', P.destKind === 'me' ? 'הגיע/ה אליך' : 'בבית', P.destKind === 'me' ? 'הגיע/ה' : 'בבית');
   if (d.alert) return S('bad', `עומד/ת ${fmtDur(d.stillMin)}${where}`, '⚠ חריג');
-  if (d.ageMin > 20) return S('warn', `המיקום לא התעדכן ${fmtDur(d.ageMin)}`, 'לא מעודכן');
   if (d.roadLong) return S('warn', `עומד/ת ${fmtDur(d.stillMin)} על כביש${where}`, 'לבדוק');
   if (!d.moving && d.stillMin >= 2 && !d.onRoad) return S('idle', `${d.place?.name || 'במקום'} · ${fmtDur(d.stillMin)}`, 'במקום');
   if (!d.moving && d.stillMin >= 2) return S('warn', `עומד/ת ${fmtDur(d.stillMin)}${where}`, eta || 'עומד/ת');
@@ -55,23 +55,23 @@ export function analyze(P, alertMin) {
   const facts = [
     d.kmh != null ? `מהירות: ${Math.round(d.kmh)} קמ״ש` : 'מהירות: לא ידועה',
     d.stillMin >= 2 ? `באותו מקום: ${fmtDur(d.stillMin)}` : (d.remain != null ? `נשאר: ${fmtDist(d.remain)}` : 'בתנועה'),
-    d.battery != null ? `סוללה: ${d.battery}%${d.charging ? ' ⚡' : ''}` : null,
+    d.battery != null ? `סוללה${d.ageMin > 20 ? ' (בעדכון האחרון)' : ''}: ${d.battery}%${d.charging ? ' ⚡' : ''}` : null,
     `עדכון אחרון: ${d.ageMin < 1 ? 'עכשיו' : 'לפני ' + fmtDur(d.ageMin)}`,
     P.noAnswer ? `שיחות שלא נענו: ${P.noAnswer}` : null,
     d.place?.name ? `📍 ${d.place.name}` : null
   ].filter(Boolean);
   const delayTxt = d.delayMin != null && d.delayMin > 4 ? ` ביחס לנסיעה רגילה הוא/היא מאחר/ת בכ-${Math.round(d.delayMin)} דק׳.` : '';
 
-  if (d.atDest) return { sev: 'ok', title: 'הכול בסדר', lead: `${n} ${P.destKind === 'me' ? 'כבר אצלך' : 'כבר בבית'}.`, facts, hyp: [] };
-
   if (d.ageMin > 20) {
     const low = d.battery != null && d.battery <= 15 && !d.charging;
     const hyp = [
       { l: 'הטלפון כבה (נגמרה הסוללה)', p: low ? 60 : 25, why: low ? `בעדכון האחרון הסוללה הייתה ${d.battery}%` : 'אין עדכונים מהטלפון' },
       { l: 'אין קליטה באזור', p: low ? 25 : 45, why: 'לפעמים במנהרות, חניונים ואזורים פתוחים אין קליטה' },
-      { l: 'האפליקציה נסגרה / המיקום כובה', p: low ? 15 : 30, why: 'חיסכון בסוללה בטלפון עלול לעצור את האפליקציה' }];
-    return { sev: d.alert ? 'alert' : 'warn', title: 'המיקום הפסיק להתעדכן', lead: `העדכון האחרון מ${n} התקבל לפני ${fmtDur(d.ageMin)}.${d.onRoad ? ' באותו רגע הוא/היא עמד/ה על כביש.' : ''} כדאי להתקשר.`, facts, hyp };
+      { l: 'האפליקציה נסגרה / הטלפון הופעל מחדש', p: low ? 15 : 30, why: 'חיסכון בסוללה או הפעלה מחדש עוצרים את השיתוף עד שפותחים את האפליקציה' }];
+    return { sev: d.alert ? 'alert' : 'warn', title: 'המיקום הפסיק להתעדכן', lead: `העדכון האחרון מ${n} התקבל לפני ${fmtDur(d.ageMin)}${d.atDest ? ', כשהיה/תה בבית' : d.place?.name ? ', ב' + d.place.name : ''}. המיקום שמוצג הוא הישן – ייתכן שהוא/היא כבר במקום אחר. כדאי להתקשר, ולבקש לפתוח את האפליקציה.`, facts, hyp };
   }
+  if (d.atDest) return { sev: 'ok', title: 'הכול בסדר', lead: `${n} ${P.destKind === 'me' ? 'כבר אצלך' : 'כבר בבית'}.`, facts, hyp: [] };
+
   if (d.alert || d.roadLong) {
     const major = d.place?.major;
     const hyp = d.alert ? [

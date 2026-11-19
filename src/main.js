@@ -1,3 +1,4 @@
+import { registerPlugin } from '@capacitor/core';
 import { onAuthStateChanged, getRedirectResult } from 'firebase/auth';
 import {
   doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, orderBy, limit,
@@ -11,6 +12,7 @@ import { MapView } from './lib/mapview.js';
 import { $, esc, initial, COLORS, fmtDur, fmtDist, clock, clockIn, timeAgo, haversine, normPhone, prettyPhone, telHref, randomCode, store } from './lib/util.js';
 import { SITE_URL } from './firebase-config.js';
 
+const BatteryOpt = isNative ? registerPlugin('BatteryOpt') : null;
 const BUILD = { code: +(import.meta.env.VITE_VERSION_CODE || 1), name: import.meta.env.VITE_VERSION_NAME || '1.0' };
 
 /* =========================================================
@@ -181,7 +183,7 @@ function startSubs() {
     if (S.page === 'groups' && !S.selected) renderList();
   }, e => console.warn(e)));
 
-  if (!store.get('noAutoTrack', false) && S.priv?.sharing !== false) beginTracking();
+  if (!store.get('noAutoTrack', false) && S.priv?.sharing !== false) beginTracking().then(() => setTimeout(() => checkBattery(false), 2500));
   else if (!isNative && navigator.geolocation) navigator.geolocation.getCurrentPosition(p => { S.myPos = { lat: p.coords.latitude, lng: p.coords.longitude }; }, () => { });
 
   clearInterval(tick);
@@ -419,19 +421,21 @@ function liveHTML(p) {
   const total = (d.remain || 0) + trailDist(p.trail), pct = total ? Math.min(100, trailDist(p.trail) / total * 100) : 0;
   const destTxt = v.destKind === 'me' ? '📍 אליך' : '🏠 הבית';
   let big, sub;
-  if (d.atDest) { big = v.destKind === 'me' ? 'הגיע/ה אליך ✓' : 'בבית 🏠'; sub = `עדכון אחרון ${timeAgo(p.loc.ts)}`; }
+  const stale = d.ageMin > 20 && !d.alert;
+  if (stale) { big = '⚠ לא מעודכן'; sub = `העדכון האחרון ${timeAgo(p.loc.ts)}${d.atDest ? ' – אז היה/תה בבית' : ''}. ייתכן שהאפליקציה נסגרה אצלו/ה.`; }
+  else if (d.atDest) { big = v.destKind === 'me' ? 'הגיע/ה אליך ✓' : 'בבית 🏠'; sub = `עדכון אחרון ${timeAgo(p.loc.ts)}`; }
   else if (st.level === 'bad') { big = '⚠ ללא תזוזה'; sub = `${fmtDur(d.stillMin)} באותה נקודה${d.remain != null ? ' · נשארו ' + fmtDist(d.remain) : ''}`; }
   else if (d.etaMin != null && (d.moving || d.startedTrip)) { big = `${d.etaMin} דק׳`; sub = `הגעה משוערת ${clockIn(d.etaMin)} · נשארו ${fmtDist(d.remain)}${d.delayMin > 4 ? ` · איחור של כ-${Math.round(d.delayMin)} דק׳` : ''}`; }
   else if (d.etaMin != null) { big = 'עוד לא בדרך'; sub = `אם יצא/ה עכשיו: הגעה בערך ב-${clockIn(d.etaMin)} (${fmtDist(d.remain)})`; }
   else { big = st.badge; sub = v.dest ? '' : 'אין יעד – הגדירו בית או אפשרו מיקום'; }
-  return `<div class="eta ${st.level === 'bad' ? 'alert' : ''}"><div class="big">${esc(big)}</div><div class="sub">${esc(sub)}</div>
-      ${v.dest && !d.atDest ? `<div class="prog"><i style="width:${pct}%"></i><b style="right:${pct}%"></b></div>
+  return `<div class="eta ${st.level === 'bad' ? 'alert' : stale ? 'stale' : ''}"><div class="big">${esc(big)}</div><div class="sub">${esc(sub)}</div>
+      ${v.dest && !d.atDest && !stale ? `<div class="prog"><i style="width:${pct}%"></i><b style="right:${pct}%"></b></div>
       <div class="prog-l"><span>${p.loc.tripStart && d.startedTrip ? 'יצא/ה ' + clock(p.loc.tripStart) : esc(d.place?.name || '')}</span><span>${destTxt}</span></div>` : ''}
     </div>
     <div class="stats">
       <div class="stat"><div class="v">${d.kmh != null && d.moving ? Math.round(d.kmh) : 0}</div><div class="k">קמ״ש</div></div>
       <div class="stat"><div class="v">${fmtDist(trailDist(p.trail))}</div><div class="k">עבר/ה</div></div>
-      <div class="stat"><div class="v">${d.battery != null ? d.battery + '%' : '—'}</div><div class="k">סוללה${d.charging ? ' ⚡' : ''}</div></div>
+      <div class="stat"><div class="v">${d.battery != null ? d.battery + '%' : '—'}</div><div class="k">סוללה${d.charging ? ' ⚡' : ''}${d.ageMin > 20 ? ' (ישן)' : ''}</div></div>
     </div>
     <div style="font-size:12px;color:var(--muted);margin:-4px 0 10px">עודכן ${timeAgo(p.loc.ts)}${d.place?.name ? ' · ' + esc(d.place.name) : ''}</div>`;
 }
@@ -518,6 +522,8 @@ function callPerson(p) {
   openExt(telHref(ph));
 }
 function onResume() {
+  if (S.started && !isTracking() && !store.get('noAutoTrack', false) && S.priv?.sharing !== false) beginTracking();
+  if (isNative && S.started) checkBattery(false, true);
   if (!pendingCall || Date.now() - pendingCall.t > 30 * 60000 || Date.now() - pendingCall.t < 1500) return;
   const p = S.people.get(pendingCall.uid); pendingCall = null; if (!p) return;
   modal(`<div class="callscreen">${avatar(p)}<h3>${esc(p.name)} ענה/תה?</h3><p>זה עוזר לאפליקציה להבין אם משהו לא בסדר.</p>
@@ -796,7 +802,8 @@ function renderSettings() {
       <div class="srow"><div class="lbl">שיתוף המיקום שלי<small>${sharing ? 'הקבוצות שלך רואות איפה את/ה' : 'המיקום שלך מוסתר מכולם'}</small></div><button class="tog ${sharing ? 'on' : ''}" id="tShare"></button></div>
       <div class="srow"><div class="lbl">הבית שלי<small>${priv.home ? esc(priv.home.label || 'מוגדר') : 'לא מוגדר – בלי בית אי אפשר לחשב "בדרך הביתה"'}</small></div><button class="btn btn-s btn-sm" id="setHome">${priv.home ? 'שינוי' : 'הגדרה'}</button></div>
       ${S.trackErr ? `<div class="srow"><div class="lbl" style="color:var(--badInk)">בעיה בשליחת המיקום<small>${esc(S.trackErr)}</small></div></div>` : ''}
-      ${isNative ? `<div class="srow"><div class="lbl">המיקום מפסיק להתעדכן?<small>בהגדרות הטלפון: אפליקציות ← מיקומך ← סוללה ← "ללא הגבלה", ומיקום ← "לאפשר כל הזמן"</small></div><button class="btn btn-g btn-sm" id="openSet">הגדרות</button></div>` : ''}
+      ${isNative ? `<div class="srow"><div class="lbl">פועל ברקע<small>${S.battIgnoring ? '✓ האפליקציה לא תיעצר ע״י חיסכון בסוללה' : '⚠ חיסכון בסוללה עלול לעצור את שיתוף המיקום'}</small></div>${S.battIgnoring ? '' : '<button class="btn btn-p btn-sm" id="battFix">תיקון</button>'}</div>
+      <div class="srow"><div class="lbl">הרשאות מיקום<small>מומלץ: מיקום ← "לאפשר כל הזמן"</small></div><button class="btn btn-g btn-sm" id="openSet">הגדרות</button></div>` : ''}
     </div>
     <div class="sec-t">תצוגה</div>
     <div class="sec"><div class="srow"><div class="lbl">ערכת צבעים<small>אוטומטי = לפי הטלפון</small></div>
@@ -818,6 +825,7 @@ function renderSettings() {
   $('tShare').onclick = toggleSharing;
   $('setHome').onclick = openHome;
   if ($('openSet')) $('openSet').onclick = () => openLocationSettings();
+  if ($('battFix')) $('battFix').onclick = () => checkBattery(true);
   document.querySelectorAll('#themeSeg button').forEach(b => b.onclick = () => { settings.theme = b.dataset.v; saveSettings(); applyTheme(); renderSettings(); });
   $('sAlert').onchange = e => { settings.alertMin = +e.target.value; saveSettings(); toast('נשמר'); };
   $('tArr').onclick = () => { settings.arrivalNotify = !settings.arrivalNotify; saveSettings(); renderSettings(); };
@@ -853,6 +861,25 @@ function openHome() {
     $('hRes').querySelectorAll('[data-h]').forEach(b => b.onclick = () => save(r[+b.dataset.h]));
   }, 500); };
   if ($('hDel')) $('hDel').onclick = () => save(null);
+}
+
+/* =========================================================
+   חיסכון בסוללה (אנדרואיד) – שלא יעצור את שיתוף המיקום
+   ========================================================= */
+async function checkBattery(force, silent) {
+  if (!BatteryOpt) return;
+  let st; try { st = await BatteryOpt.status(); } catch (e) { return; }
+  const was = S.battIgnoring; S.battIgnoring = st.ignoring;
+  if (S.page === 'settings' && was !== st.ignoring) renderSettings();
+  if (st.ignoring || silent || !isTracking()) return;
+  if (!force && Date.now() - store.get('battAsk', 0) < 2 * 86400e3) return;
+  store.set('battAsk', Date.now());
+  const samsung = /samsung/i.test(st.manufacturer || '');
+  modal(`<div style="text-align:center;font-size:44px">🔋</div><h3 style="text-align:center">שהמיקום לא ייעצר</h3>
+    <p>אנדרואיד עוצר אפליקציות ברקע כדי לחסוך בסוללה – ואז הקבוצה רואה מיקום ישן. בחלון שייפתח לחצו <b>"אישור"</b> / <b>"לאפשר"</b>.</p>
+    ${samsung ? `<div class="note">בסמסונג כדאי גם: הגדרות ← סוללה ← הגבלות שימוש ברקע ← לוודא ש"מיקומך" <b>לא</b> ברשימת "אפליקציות במצב שינה".</div>` : ''}
+    <div class="actions"><button class="btn btn-p" id="battGo">המשך</button><button class="btn btn-g" onclick="closeModal()">אחר כך</button></div>`);
+  $('battGo').onclick = async () => { closeModal(); try { await BatteryOpt.request(); } catch (e) { openLocationSettings(); } };
 }
 
 /* =========================================================
