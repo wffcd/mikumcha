@@ -4,12 +4,13 @@ import { CapacitorHttp } from '@capacitor/core';
 import { auth } from './fb.js';
 import { firebaseConfig } from '../firebase-config.js';
 
-let tok = { token: null, exp: 0 };
+let tok = { token: null, exp: 0, uid: null };
+export function resetToken() { tok = { token: null, exp: 0, uid: null }; }
 
 async function idToken() {
-  if (tok.token && tok.exp - Date.now() > 5 * 60 * 1000) return tok.token;
   const u = auth.currentUser;
   if (!u) throw new Error('not signed in');
+  if (tok.token && tok.uid === u.uid && tok.exp - Date.now() > 5 * 60 * 1000) return tok.token;
   const res = await CapacitorHttp.post({
     url: `https://securetoken.googleapis.com/v1/token?key=${firebaseConfig.apiKey}`,
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -17,7 +18,7 @@ async function idToken() {
   });
   const d = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
   if (!d || !d.id_token) throw new Error('token refresh failed ' + res.status);
-  tok = { token: d.id_token, exp: Date.now() + (+d.expires_in || 3600) * 1000 };
+  tok = { uid: u.uid, token: d.id_token, exp: Date.now() + (+d.expires_in || 3600) * 1000 };
   return tok.token;
 }
 

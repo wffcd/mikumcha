@@ -7,7 +7,7 @@ const placeCache = new Map();   // "lat,lng" מעוגל -> {type, name}
 /** מסלול נסיעה מנקודה לנקודה. מחזיר {distance (מ'), duration (שנ'), coords:[[lat,lng]...]} */
 export async function getRoute(from, to, key) {
   const c = routeCache.get(key);
-  if (c && c.to.lat === to.lat && c.to.lng === to.lng && haversine(c.from, from) < 150 && Date.now() - c.at < 90000) return c.data;
+  if (c && haversine(c.to, to) < 150 && haversine(c.from, from) < 150 && Date.now() - c.at < 90000) return c.data;
   try {
     const url = `https://router.project-osrm.org/route/v1/driving/${from.lng},${from.lat};${to.lng},${to.lat}?overview=full&geometries=geojson`;
     const r = await fetch(url); const j = await r.json();

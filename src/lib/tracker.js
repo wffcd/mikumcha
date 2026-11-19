@@ -38,6 +38,7 @@ async function handle(lat, lng, acc, speed, heading, t) {
   // מהירות – מה-GPS, ואם אין, מחושבת מהנקודה הקודמת
   if ((speed == null || speed < 0) && lastFix && t > lastFix.t) speed = haversine(lastFix, p) / ((t - lastFix.t) / 1000);
   if (speed > 70) speed = null;  // קפיצת GPS
+  p.s = speed;
   lastFix = p;
 
   if (!st.anchor || haversine(st.anchor, p) > MOVE_M) {
@@ -68,7 +69,14 @@ async function handle(lat, lng, acc, speed, heading, t) {
   finally { writing = false; }
 }
 
+let starting = null;
+/** מונע הפעלה כפולה כשקוראים לפונקציה פעמיים במקביל */
 export async function startTracking(opts) {
+  if (starting) { uid = opts.uid; onLocal = opts.onLocal || onLocal; onError = opts.onError || onError; return starting; }
+  starting = startTracking0(opts);
+  try { return await starting; } finally { starting = null; }
+}
+async function startTracking0(opts) {
   uid = opts.uid; onLocal = opts.onLocal || onLocal; onError = opts.onError || onError;
   if (watchId !== null) return true;
   if (isNative) {
@@ -92,7 +100,9 @@ export async function startTracking(opts) {
   clearInterval(hb);
   hb = setInterval(async () => {
     if (!lastFix || writing) return;
-    try { await write({ ts: Date.now(), stillSince: st.anchor?.t ?? null, ...(await battery()) }); } catch (e) { }
+    // אם היה בנסיעה מהירה ולא הגיע מיקום כבר 2 דק' – לא מסמנים "עדכני" (כדי שלא יוצג מיקום ישן כאילו הוא חדש)
+    const driving = lastFix.s != null && lastFix.s > 12 && Date.now() - lastFix.t > 120000;
+    try { await write(driving ? { ...(await battery()) } : { ts: Date.now(), stillSince: st.anchor?.t ?? null, ...(await battery()) }); } catch (e) { }
   }, 3 * 60 * 1000);
   return true;
 }
@@ -103,6 +113,12 @@ export async function stopTracking() {
   if (isNative) await BackgroundGeolocation.removeWatcher({ id: watchId });
   else navigator.geolocation.clearWatch(watchId);
   watchId = null;
+}
+
+/** איפוס מלא בהתנתקות (שלא יעברו נתונים בין חשבונות) */
+export function resetTracker() {
+  st = { anchor: null, lastMoveT: 0, tripStart: null, tripFrom: null };
+  lastFix = null; lastWrite = null; lastTrail = null;
 }
 
 export function openLocationSettings() { if (isNative) BackgroundGeolocation.openSettings(); }

@@ -5,11 +5,12 @@ import {
   onSnapshot, getDocs, writeBatch, arrayUnion, arrayRemove, serverTimestamp
 } from 'firebase/firestore';
 import { auth, db, configured, isNative, signInGoogle, logout } from './lib/fb.js';
-import { startTracking, stopTracking, isTracking, openLocationSettings } from './lib/tracker.js';
+import { startTracking, stopTracking, isTracking, openLocationSettings, resetTracker } from './lib/tracker.js';
+import { resetToken } from './lib/rest.js';
 import { getRoute, placeAt, cachedPlace, searchAddress } from './lib/route.js';
 import { status as personStatus, analyze, derive } from './lib/analysis.js';
 import { MapView } from './lib/mapview.js';
-import { $, esc, initial, COLORS, fmtDur, fmtDist, clock, clockIn, timeAgo, haversine, normPhone, prettyPhone, telHref, randomCode, store } from './lib/util.js';
+import { $, esc, initial, safeColor, COLORS, fmtDur, fmtDist, clock, clockIn, timeAgo, haversine, normPhone, prettyPhone, telHref, randomCode, store } from './lib/util.js';
 import { SITE_URL } from './firebase-config.js';
 
 const BatteryOpt = isNative ? registerPlugin('BatteryOpt') : null;
@@ -46,8 +47,8 @@ $('modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
 let tt; function toast(t) { $('toast').textContent = t; $('toast').classList.add('on'); clearTimeout(tt); tt = setTimeout(() => $('toast').classList.remove('on'), 2600); }
 function openExt(url) { if (isNative || /^(tel|sms|mailto):/.test(url)) location.href = url; else window.open(url, '_blank', 'noopener'); }
 function avatar(p, cls = '', dot) {
-  const name = p?.name || '?', color = p?.color || '#94a3b8';
-  return `<div class="av ${cls}" style="background:${color}">${p?.photo ? `<img src="${esc(p.photo)}" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${initial(name)}${dot ? `<span class="dot" style="background:${dot}"></span>` : ''}</div>`;
+  const name = p?.name || '?', color = safeColor(p?.color);
+  return `<div class="av ${cls}" style="background:${color}">${p?.photo ? `<img src="${esc(p.photo)}" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${initial(name)}${dot ? `<span class="dot" style="background:${safeColor(dot)}"></span>` : ''}</div>`;
 }
 
 /* =========================================================
@@ -74,6 +75,10 @@ else {
   onAuthStateChanged(auth, async u => {
     S.user = u;
     if (!u) { stopAll(); screen('s-login'); return; }
+    // החלפת חשבון באותו טלפון – מנקים את כל מה שנשמר מהחשבון הקודם
+    const prevUid = store.get('uid', null);
+    if (prevUid && prevUid !== u.uid) stopAll();
+    store.set('uid', u.uid);
     try {
       const snap = await getDoc(doc(db, 'users', u.uid));
       S.profile = snap.exists() ? snap.data() : null;
@@ -100,7 +105,9 @@ function showProfile() {
   $('pfColors').innerHTML = COLORS.map(c => `<button data-c="${c}" style="background:${c}" class="${c === pfColor ? 'on' : ''}"></button>`).join('');
   $('pfColors').querySelectorAll('button').forEach(b => b.onclick = () => { pfColor = b.dataset.c; $('pfColors').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
   $('pfErr').textContent = '';
+  $('pfCancel').style.display = S.started ? '' : 'none';
 }
+$('pfCancel').onclick = () => { if (S.started) screen(null); };
 $('pfSave').onclick = async () => {
   const name = $('pfName').value.trim(), phone = normPhone($('pfPhone').value);
   if (!name) return $('pfErr').textContent = 'צריך שם';
@@ -146,8 +153,18 @@ $('permSkip').onclick = () => { store.set('permAsked', true); store.set('noAutoT
 /* =========================================================
    הפעלת האפליקציה + האזנה לנתונים
    ========================================================= */
-let gmap = null, bmap = null, tick = null;
-function stopAll() { S.unsub.forEach(f => f()); S.unsub = []; for (const p of S.people.values()) p.unsub?.(); S.people.clear(); S.groups.clear(); S.started = false; clearInterval(tick); stopTracking(); }
+let gmap = null, bmap = null, tick = null, trimTimer = null, listenersOn = false;
+function stopAll() {
+  S.unsub.forEach(f => f()); S.unsub = []; for (const p of S.people.values()) p.unsub?.(); S.people.clear(); S.groups.clear();
+  S.started = false; clearInterval(tick); clearInterval(trimTimer); stopTracking(); wipeLocal();
+}
+/** ניקוי כל המידע המקומי של החשבון (בהתנתקות / החלפת חשבון) */
+function wipeLocal() {
+  resetToken(); resetTracker();
+  Object.assign(S, { notes: [], noAnswer: {}, destMode: {}, invitesIn: [], invitesOut: [], activeGroup: null, selected: null, analysis: null, mapSel: null, myPos: null, profile: null, priv: null, bmapFitted: false });
+  ['notes', 'noAnswer', 'destMode', 'activeGroup', 'trk', 'uid'].forEach(k => { try { localStorage.removeItem('mk-' + k); } catch (e) { } });
+  try { $('unread').style.display = 'none'; gmap?.setRoute(); gmap?.setPeople([], null); bmap?.setPeople([], null); gmap?.setMe(null); bmap?.setMe(null); } catch (e) { }
+}
 
 function startApp() {
   screen(null);
@@ -190,8 +207,12 @@ function startSubs() {
   tick = setInterval(liveTick, 15000);
   go(S.page);
   checkUpdate();
-  if (isNative) import('@capacitor/app').then(({ App }) => App.addListener('resume', onResume)).catch(() => { });
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') onResume(); });
+  clearInterval(trimTimer); setTimeout(trimTrail, 20000); trimTimer = setInterval(trimTrail, 6 * 3600e3);
+  if (!listenersOn) {
+    listenersOn = true;
+    if (isNative) import('@capacitor/app').then(({ App }) => App.addListener('resume', () => { if (S.user) onResume(); })).catch(() => { });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.user) onResume(); });
+  }
 }
 
 async function beginTracking() {
@@ -235,7 +256,7 @@ function subPerson(uid) {
       enrich(p).then(() => personChanged(p));
     }, () => { p.denied = true; personChanged(p); clearTimeout(retry); retry = setTimeout(() => { if (S.people.get(uid) === p) { u2?.(); subLoc(); } }, 20000); });
   };
-  u1 = onSnapshot(doc(db, 'users', uid), s => { const d = s.data() || {}; p.name = d.name || 'ללא שם'; p.color = d.color || '#94a3b8'; p.photo = d.photo || null; personChanged(p); });
+  u1 = onSnapshot(doc(db, 'users', uid), s => { const d = s.data() || {}; p.name = d.name || 'ללא שם'; p.color = safeColor(d.color); p.photo = d.photo || null; personChanged(p); });
   subLoc();
   p.unsub = () => { u1?.(); u2?.(); clearTimeout(retry); };
 }
@@ -284,13 +305,13 @@ function personChanged(p) {
   p.wasAway = d.kind === 'ok' && !d.atDest && (d.moving || d.startedTrip);
   scheduleRender();
 }
-let notifId = 1;
+let notifId = store.get('nid', 0) || 0;
 async function notify(title, body, uid) {
   if (document.visibilityState === 'visible' && !isNative) return;
   try {
     if (isNative) {
       const { LocalNotifications } = await import('@capacitor/local-notifications');
-      await LocalNotifications.schedule({ notifications: [{ id: notifId++, title, body, extra: { uid } }] });
+      await LocalNotifications.schedule({ notifications: [{ id: (notifId = (notifId % 2e9) + 1, store.set('nid', notifId), notifId), title, body, extra: { uid } }] });
     } else if ('Notification' in window && Notification.permission === 'granted') new Notification(title, { body, icon: 'icon-192.png' });
   } catch (e) { }
 }
@@ -345,7 +366,7 @@ function updateSub() {
   $('sub').style.color = n ? 'var(--badInk)' : '';
 }
 function renderChips() {
-  const html = [...S.groups.values()].map(g => `<button class="chip ${g.id === S.activeGroup ? 'on' : ''}" data-g="${g.id}">${g.emoji || '👥'} ${esc(g.name)}</button>`).join('') + `<button class="chip add" id="addGroup">＋ קבוצה חדשה</button>`;
+  const html = [...S.groups.values()].map(g => `<button class="chip ${g.id === S.activeGroup ? 'on' : ''}" data-g="${g.id}">${esc(g.emoji || '👥')} ${esc(g.name)}</button>`).join('') + `<button class="chip add" id="addGroup">＋ קבוצה חדשה</button>`;
   if ($('chips')._h === html) return; $('chips')._h = html; $('chips').innerHTML = html;
   $('chips').querySelectorAll('[data-g]').forEach(b => b.onclick = () => { setGroup(b.dataset.g); S.selected = null; S.analysis = null; renderGroups(); fitGroup(); });
   $('addGroup').onclick = openAddGroup;
@@ -372,7 +393,7 @@ function renderList() {
   if (!g) { $('sheetBody').innerHTML = `<div class="empty">אין לך עדיין קבוצות.</div><button class="dashed" id="ng">＋ יצירת קבוצה</button>`; $('ng').onclick = openAddGroup; return; }
   const people = groupPeople();
   const pend = S.invitesOut.filter(i => i.gid === g.id);
-  const html = `<h2 class="sh">${g.emoji || '👥'} ${esc(g.name)} <span class="count">${people.length + 1} אנשים</span><span style="flex:1"></span><button class="iconbtn" id="gSet" title="הגדרות קבוצה">⋯</button></h2>` +
+  const html = `<h2 class="sh">${esc(g.emoji || '👥')} ${esc(g.name)} <span class="count">${people.length + 1} אנשים</span><span style="flex:1"></span><button class="iconbtn" id="gSet" title="הגדרות קבוצה">⋯</button></h2>` +
     people.map(p => { const st = personStatus(view(p), settings.alertMin); return `<button class="mem" data-id="${p.uid}">
       ${avatar(p, '', st.dot)}<div class="info"><div class="nm">${esc(p.name)}</div><div class="st">${esc(st.txt)}</div></div>
       <div class="badge ${st.cls}">${esc(st.badge)}</div></button>`; }).join('') +
@@ -402,8 +423,8 @@ async function loadTrail(uid) {
   const p = S.people.get(uid); if (!p?.loc || p.denied) return;
   const from = p.loc.tripStart && (Date.now() - p.loc.tripStart < 6 * 3600e3) ? p.loc.tripStart : Date.now() - 2 * 3600e3;
   try {
-    const snap = await getDocs(query(collection(db, 'locations', uid, 'trail'), where('ts', '>=', from), orderBy('ts'), limit(800)));
-    p.trail = snap.docs.map(d => [d.data().lat, d.data().lng]);
+    const snap = await getDocs(query(collection(db, 'locations', uid, 'trail'), where('ts', '>=', from), orderBy('ts', 'desc'), limit(800)));
+    p.trail = snap.docs.reverse().map(d => [d.data().lat, d.data().lng]);
     p.trail.push([p.loc.lat, p.loc.lng]);
   } catch (e) { console.warn('trail', e); p.trail = [[p.loc.lat, p.loc.lng]]; }
   if (S.selected === uid) drawSelectedRoute();
@@ -422,7 +443,7 @@ function liveHTML(p) {
   const destTxt = v.destKind === 'me' ? '📍 אליך' : '🏠 הבית';
   let big, sub;
   const stale = d.ageMin > 20 && !d.alert;
-  if (stale) { big = '⚠ לא מעודכן'; sub = `העדכון האחרון ${timeAgo(p.loc.ts)}${d.atDest ? ' – אז היה/תה בבית' : ''}. ייתכן שהאפליקציה נסגרה אצלו/ה.`; }
+  if (stale) { big = '⚠ לא מעודכן'; sub = `העדכון האחרון ${timeAgo(p.loc.ts)}${d.atDest ? (v.destKind === 'me' ? ' – אז היה/תה לידך' : ' – אז היה/תה בבית') : ''}. ייתכן שהאפליקציה נסגרה אצלו/ה.`; }
   else if (d.atDest) { big = v.destKind === 'me' ? 'הגיע/ה אליך ✓' : 'בבית 🏠'; sub = `עדכון אחרון ${timeAgo(p.loc.ts)}`; }
   else if (st.level === 'bad') { big = '⚠ ללא תזוזה'; sub = `${fmtDur(d.stillMin)} באותה נקודה${d.remain != null ? ' · נשארו ' + fmtDist(d.remain) : ''}`; }
   else if (d.etaMin != null && (d.moving || d.startedTrip)) { big = `${d.etaMin} דק׳`; sub = `הגעה משוערת ${clockIn(d.etaMin)} · נשארו ${fmtDist(d.remain)}${d.delayMin > 4 ? ` · איחור של כ-${Math.round(d.delayMin)} דק׳` : ''}`; }
@@ -566,7 +587,7 @@ function openAddGroup() {
 }
 function openGroupSettings() {
   const g = group(); if (!g) return; const owner = g.owner === me();
-  modal(`<h3>${g.emoji || '👥'} ${esc(g.name)}</h3>
+  modal(`<h3>${esc(g.emoji || '👥')} ${esc(g.name)}</h3>
     <label class="field"><span>שם הקבוצה</span><input id="grName" value="${esc(g.name)}"></label>
     <div class="mscroll">${g.members.map(u => { const p = u === me() ? { ...S.profile, name: (S.profile?.name || '') + ' (את/ה)' } : S.people.get(u) || { name: '...' };
       return `<div class="crow">${avatar(p)}<div class="info"><div class="nm">${esc(p.name)}</div>${u === g.owner ? '<span class="tag tag-y">מנהל/ת</span>' : ''}</div>
@@ -740,7 +761,7 @@ function fitAll() {
   bmap.fit(pts, 14);
 }
 function renderMapPage() {
-  $('mapFilter').innerHTML = [{ id: 'all', name: 'כולם', emoji: '🌍' }, ...S.groups.values()].map(g => `<button class="chip ${g.id === S.mapFilter ? 'on' : ''}" data-f="${g.id}">${g.emoji || '👥'} ${esc(g.name)}</button>`).join('');
+  $('mapFilter').innerHTML = [{ id: 'all', name: 'כולם', emoji: '🌍' }, ...S.groups.values()].map(g => `<button class="chip ${g.id === S.mapFilter ? 'on' : ''}" data-f="${g.id}">${esc(g.emoji || '👥')} ${esc(g.name)}</button>`).join('');
   $('mapFilter').querySelectorAll('[data-f]').forEach(b => b.onclick = () => { S.mapFilter = b.dataset.f; S.mapSel = null; renderMapPage(); fitAll(); });
   renderStrip(); updatePcard();
   bmap.setPeople(pins(mapPeople()), S.mapSel); bmap.setMe(S.myPos);
@@ -903,3 +924,29 @@ window.addEventListener('resize', () => { gmap?.refresh(); bmap?.refresh(); });
 
 applyTheme();
 if (import.meta.env.DEV) window.__mk = { S, initUI, go, personChanged, screen, enrich, renderAll };
+
+/* מחיקת נקודות שביל ישנות מיומיים (פרטיות + מקום) */
+async function trimTrail() {
+  try {
+    const uid = me(); if (!uid) return;
+    const snap = await getDocs(query(collection(db, 'locations', uid, 'trail'), where('ts', '<', Date.now() - 2 * 86400e3), limit(400)));
+    if (snap.empty) return;
+    const b = writeBatch(db); snap.docs.forEach(d => b.delete(d.ref)); await b.commit();
+    if (snap.size >= 400) setTimeout(trimTrail, 3000);
+  } catch (e) { console.warn('trim', e); }
+}
+
+/* כפתור "חזרה" של אנדרואיד */
+function handleBack() {
+  if ($('modal').classList.contains('on')) { closeModal(); return true; }
+  const scr = document.querySelector('.screen.on');
+  if (scr) { if (scr.id === 's-profile' && S.started) { screen(null); return true; } return false; }
+  if (S.page === 'groups' && S.selected) { S.selected = null; S.analysis = null; renderGroups(); fitGroup(); return true; }
+  if (S.page === 'map' && S.mapSel) { S.mapSel = null; renderMapPage(); return true; }
+  if (S.page !== 'groups') { go('groups'); return true; }
+  return false;
+}
+if (isNative) import('@capacitor/app').then(({ App }) => App.addListener('backButton', () => {
+  let handled = false; try { handled = handleBack(); } catch (e) { console.warn(e); }
+  if (!handled) App.minimizeApp();
+})).catch(() => { });

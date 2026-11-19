@@ -1,6 +1,6 @@
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { esc, initial } from './util.js';
+import { esc, initial, safeColor } from './util.js';
 
 // OpenStreetMap: חינם ובלי מפתח. במצב כהה המפה עוברת היפוך צבעים.
 const OSM = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
@@ -56,8 +56,8 @@ export class MapView {
       if (p.lat == null) continue;
       keep.add(p.uid);
       const html = `<div class="pin${p.uid === selUid ? ' sel' : ''}">${p.alert ? '<span class="pin-pulse"></span>' : ''}
-        <div class="pin-av" style="background:${p.color}">${p.photo ? `<img src="${esc(p.photo)}" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<b>${initial(p.name)}</b></div>
-        <span class="pin-dot" style="background:${p.dot}"></span>
+        <div class="pin-av" style="background:${safeColor(p.color)}">${p.photo ? `<img src="${esc(p.photo)}" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<b>${initial(p.name)}</b></div>
+        <span class="pin-dot" style="background:${safeColor(p.dot)}"></span>
         <div class="pin-lbl">${esc(p.label)}</div></div>`;
       let m = this.markers.get(p.uid);
       if (!m) {

@@ -38,7 +38,7 @@ export function status(P, alertMin) {
   if (d.kind === 'off') return S('idle', 'לא משתף/ת מיקום כרגע', 'מוסתר');
   const eta = d.etaMin != null && (d.moving || d.startedTrip) ? d.etaMin + ' דק׳' : null;
   const where = d.place?.name ? ' · ' + d.place.name : '';
-  if (d.ageMin > 20 && !d.alert) return S('warn', `לא מעודכן ${fmtDur(d.ageMin)}${d.atDest ? ' · נראה/תה לאחרונה בבית' : d.place?.name ? ' · נראה/תה לאחרונה ב' + d.place.name : ''}`, 'לא מעודכן');
+  if (d.ageMin > 20 && !d.alert) return S('warn', `לא מעודכן ${fmtDur(d.ageMin)}${d.atDest ? (P.destKind === 'me' ? ' · נראה/תה לאחרונה לידך' : ' · נראה/תה לאחרונה בבית') : d.place?.name ? ' · נראה/תה לאחרונה ב' + d.place.name : ''}`, 'לא מעודכן');
   if (d.atDest) return S('ok', P.destKind === 'me' ? 'הגיע/ה אליך' : 'בבית', P.destKind === 'me' ? 'הגיע/ה' : 'בבית');
   if (d.alert) return S('bad', `עומד/ת ${fmtDur(d.stillMin)}${where}`, '⚠ חריג');
   if (d.roadLong) return S('warn', `עומד/ת ${fmtDur(d.stillMin)} על כביש${where}`, 'לבדוק');
@@ -68,7 +68,7 @@ export function analyze(P, alertMin) {
       { l: 'הטלפון כבה (נגמרה הסוללה)', p: low ? 60 : 25, why: low ? `בעדכון האחרון הסוללה הייתה ${d.battery}%` : 'אין עדכונים מהטלפון' },
       { l: 'אין קליטה באזור', p: low ? 25 : 45, why: 'לפעמים במנהרות, חניונים ואזורים פתוחים אין קליטה' },
       { l: 'האפליקציה נסגרה / הטלפון הופעל מחדש', p: low ? 15 : 30, why: 'חיסכון בסוללה או הפעלה מחדש עוצרים את השיתוף עד שפותחים את האפליקציה' }];
-    return { sev: d.alert ? 'alert' : 'warn', title: 'המיקום הפסיק להתעדכן', lead: `העדכון האחרון מ${n} התקבל לפני ${fmtDur(d.ageMin)}${d.atDest ? ', כשהיה/תה בבית' : d.place?.name ? ', ב' + d.place.name : ''}. המיקום שמוצג הוא הישן – ייתכן שהוא/היא כבר במקום אחר. כדאי להתקשר, ולבקש לפתוח את האפליקציה.`, facts, hyp };
+    return { sev: d.alert ? 'alert' : 'warn', title: 'המיקום הפסיק להתעדכן', lead: `העדכון האחרון מ${n} התקבל לפני ${fmtDur(d.ageMin)}${d.atDest ? (P.destKind === 'me' ? ', כשהיה/תה לידך' : ', כשהיה/תה בבית') : d.place?.name ? ', ב' + d.place.name : ''}. המיקום שמוצג הוא הישן – ייתכן שהוא/היא כבר במקום אחר. כדאי להתקשר, ולבקש לפתוח את האפליקציה.`, facts, hyp };
   }
   if (d.atDest) return { sev: 'ok', title: 'הכול בסדר', lead: `${n} ${P.destKind === 'me' ? 'כבר אצלך' : 'כבר בבית'}.`, facts, hyp: [] };
 

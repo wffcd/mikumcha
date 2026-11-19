@@ -1,6 +1,8 @@
 export const $ = id => document.getElementById(id);
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const initial = n => esc((String(n || '?').trim()[0]) || '?');
+/** מאפשר רק ערכי צבע תקינים (מונע הזרקת קוד דרך שדה הצבע) */
+export const safeColor = (c, def = '#94a3b8') => typeof c === 'string' && /^(#[0-9a-fA-F]{3,8}|(rgb|hsl)a?\([0-9.,%\s]+\))$/.test(c.trim()) ? c.trim() : def;
 export const COLORS = ['#ec4899', '#8b5cf6', '#0ea5e9', '#f97316', '#14b8a6', '#22c55e', '#eab308', '#6366f1', '#e11d48', '#06b6d4'];
 
 export function fmtDur(min) {
