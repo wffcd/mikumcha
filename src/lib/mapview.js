@@ -56,7 +56,7 @@ export class MapView {
       if (p.lat == null) continue;
       keep.add(p.uid);
       const html = `<div class="pin${p.uid === selUid ? ' sel' : ''}">${p.alert ? '<span class="pin-pulse"></span>' : ''}
-        <div class="pin-av" style="background:${safeColor(p.color)}">${p.photo ? `<img src="${esc(p.photo)}" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<b>${initial(p.name)}</b></div>
+        <div class="pin-av" style="background:${safeColor(p.color)}">${p.photo ? `<img src="${esc(p.photo)}" referrerpolicy="no-referrer">` : ''}<b>${initial(p.name)}</b></div>
         <span class="pin-dot" style="background:${safeColor(p.dot)}"></span>
         <div class="pin-lbl">${esc(p.label)}</div></div>`;
       let m = this.markers.get(p.uid);

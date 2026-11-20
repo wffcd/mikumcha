@@ -43,12 +43,14 @@ function screen(id) { document.querySelectorAll('.screen').forEach(s => s.classL
 function modal(html) { $('mbox').innerHTML = html; $('modal').classList.add('on'); }
 function closeModal() { $('modal').classList.remove('on'); }
 window.closeModal = closeModal;
-$('modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
+$('modal').onclick = e => { if (e.target.id === 'modal' || e.target.closest('[data-close]')) closeModal(); };
+// תמונת פרופיל שלא נטענה – מסירים אותה ומשאירים את האות (בלי קוד בתוך ה-HTML, לטובת מדיניות האבטחה)
+document.addEventListener('error', e => { const t = e.target; if (t && t.tagName === 'IMG' && t.closest('.av, .pin-av')) t.remove(); }, true);
 let tt; function toast(t) { $('toast').textContent = t; $('toast').classList.add('on'); clearTimeout(tt); tt = setTimeout(() => $('toast').classList.remove('on'), 2600); }
 function openExt(url) { if (isNative || /^(tel|sms|mailto):/.test(url)) location.href = url; else window.open(url, '_blank', 'noopener'); }
 function avatar(p, cls = '', dot) {
   const name = p?.name || '?', color = safeColor(p?.color);
-  return `<div class="av ${cls}" style="background:${color}">${p?.photo ? `<img src="${esc(p.photo)}" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${initial(name)}${dot ? `<span class="dot" style="background:${safeColor(dot)}"></span>` : ''}</div>`;
+  return `<div class="av ${cls}" style="background:${color}">${p?.photo ? `<img src="${esc(p.photo)}" referrerpolicy="no-referrer">` : ''}${initial(name)}${dot ? `<span class="dot" style="background:${safeColor(dot)}"></span>` : ''}</div>`;
 }
 
 /* =========================================================
@@ -102,14 +104,14 @@ function showProfile() {
   $('pfName').value = S.profile?.name || u.displayName || '';
   $('pfPhone').value = S.priv?.phone ? prettyPhone(S.priv.phone) : (u.phoneNumber || '');
   pfColor = S.profile?.color || COLORS[Math.floor(Math.random() * COLORS.length)];
-  $('pfColors').innerHTML = COLORS.map(c => `<button data-c="${c}" style="background:${c}" class="${c === pfColor ? 'on' : ''}"></button>`).join('');
+  $('pfColors').innerHTML = COLORS.map(c => `<button data-c="${esc(c)}" style="background:${c}" class="${c === pfColor ? 'on' : ''}"></button>`).join('');
   $('pfColors').querySelectorAll('button').forEach(b => b.onclick = () => { pfColor = b.dataset.c; $('pfColors').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
   $('pfErr').textContent = '';
   $('pfCancel').style.display = S.started ? '' : 'none';
 }
 $('pfCancel').onclick = () => { if (S.started) screen(null); };
 $('pfSave').onclick = async () => {
-  const name = $('pfName').value.trim(), phone = normPhone($('pfPhone').value);
+  const name = $('pfName').value.trim().slice(0, 40), phone = normPhone($('pfPhone').value);
   if (!name) return $('pfErr').textContent = 'צריך שם';
   if (!phone) return $('pfErr').textContent = 'מספר הטלפון לא נראה תקין';
   $('pfSave').disabled = true; $('pfErr').textContent = '';
@@ -366,7 +368,7 @@ function updateSub() {
   $('sub').style.color = n ? 'var(--badInk)' : '';
 }
 function renderChips() {
-  const html = [...S.groups.values()].map(g => `<button class="chip ${g.id === S.activeGroup ? 'on' : ''}" data-g="${g.id}">${esc(g.emoji || '👥')} ${esc(g.name)}</button>`).join('') + `<button class="chip add" id="addGroup">＋ קבוצה חדשה</button>`;
+  const html = [...S.groups.values()].map(g => `<button class="chip ${g.id === S.activeGroup ? 'on' : ''}" data-g="${esc(g.id)}">${esc(g.emoji || '👥')} ${esc(g.name)}</button>`).join('') + `<button class="chip add" id="addGroup">＋ קבוצה חדשה</button>`;
   if ($('chips')._h === html) return; $('chips')._h = html; $('chips').innerHTML = html;
   $('chips').querySelectorAll('[data-g]').forEach(b => b.onclick = () => { setGroup(b.dataset.g); S.selected = null; S.analysis = null; renderGroups(); fitGroup(); });
   $('addGroup').onclick = openAddGroup;
@@ -394,12 +396,12 @@ function renderList() {
   const people = groupPeople();
   const pend = S.invitesOut.filter(i => i.gid === g.id);
   const html = `<h2 class="sh">${esc(g.emoji || '👥')} ${esc(g.name)} <span class="count">${people.length + 1} אנשים</span><span style="flex:1"></span><button class="iconbtn" id="gSet" title="הגדרות קבוצה">⋯</button></h2>` +
-    people.map(p => { const st = personStatus(view(p), settings.alertMin); return `<button class="mem" data-id="${p.uid}">
+    people.map(p => { const st = personStatus(view(p), settings.alertMin); return `<button class="mem" data-id="${esc(p.uid)}">
       ${avatar(p, '', st.dot)}<div class="info"><div class="nm">${esc(p.name)}</div><div class="st">${esc(st.txt)}</div></div>
       <div class="badge ${st.cls}">${esc(st.badge)}</div></button>`; }).join('') +
     pend.map(i => `<div class="mem" style="opacity:.8">${avatar({ name: i.toName, photo: i.toPhoto })}
       <div class="info"><div class="nm">${esc(i.toName)}</div><div class="st">נשלחה בקשה – ממתין/ה לאישור</div></div>
-      <button class="btn btn-g btn-sm" data-cancel="${i.id}">ביטול</button></div>`).join('') +
+      <button class="btn btn-g btn-sm" data-cancel="${esc(i.id)}">ביטול</button></div>`).join('') +
     `<div class="mem" style="background:transparent;padding:6px 10px">${avatar({ ...S.profile }, '', isTracking() ? '#16a34a' : '#94a3b8')}<div class="info"><div class="nm">את/ה</div><div class="st">${isTracking() ? 'המיקום שלך משותף עם הקבוצה' : 'שיתוף המיקום שלך כבוי'}</div></div></div>` +
     (people.length || pend.length ? '' : '<div class="empty">אין עדיין אנשים בקבוצה. הוסיפו מישהו מאנשי הקשר 👇</div>') +
     `<button class="dashed" id="addMem">＋ הוספת אדם לקבוצה</button>`;
@@ -557,7 +559,7 @@ function askEta(p) {
   const msg = 'היי, מתי את/ה מגיע/ה? 🙂';
   modal(`<h3>לשאול את ${esc(p.name)}</h3><div class="invite">${esc(msg)}</div>
     <div class="actions"><button class="btn btn-p" id="viaWa">וואטסאפ</button><button class="btn btn-s" id="viaSms">SMS</button></div>
-    <button class="btn btn-g" style="width:100%;margin-top:8px" onclick="closeModal()">ביטול</button>`);
+    <button class="btn btn-g" style="width:100%;margin-top:8px" data-close="1">ביטול</button>`);
   $('viaWa').onclick = () => { closeModal(); openExt(`https://wa.me/${ph}?text=${encodeURIComponent(msg)}`); };
   $('viaSms').onclick = () => { closeModal(); openExt(`sms:${telHref(ph).slice(4)}?body=${encodeURIComponent(msg)}`); };
 }
@@ -565,7 +567,7 @@ function emergency(org, num, p) {
   const L = p.loc, d = derive(view(p), settings.alertMin);
   modal(`<div class="callscreen"><h3>חיוג ל${org}</h3><div class="num">${num}</div><p>פרטים להקראה למוקדן:</p>
     <div class="note" style="text-align:right;user-select:text">👤 ${esc(p.name)}, ${esc(prettyPhone(L.phone))}<br>📍 ${esc(d.place?.name || '')}${d.place?.area ? ', ' + esc(d.place.area) : ''}<br>🌐 נ.צ. ${L.lat.toFixed(5)}, ${L.lng.toFixed(5)}<br>⏱ ללא תזוזה ${fmtDur(d.stillMin)}${S.noAnswer[p.uid] ? ', לא עונה לטלפון' : ''}<br>🔋 סוללה ${L.battery ?? '?'}%</div>
-    <div class="actions"><button class="btn btn-g" onclick="closeModal()">ביטול</button><button class="btn btn-d" id="dial">📞 חייג ${num}</button></div></div>`);
+    <div class="actions"><button class="btn btn-g" data-close="1">ביטול</button><button class="btn btn-d" id="dial">📞 חייג ${num}</button></div></div>`);
   $('dial').onclick = () => { closeModal(); openExt('tel:' + num); };
 }
 
@@ -574,9 +576,9 @@ function emergency(org, num, p) {
    ========================================================= */
 function openAddGroup() {
   modal(`<h3>קבוצה חדשה</h3><p>תנו שם לקבוצה ובחרו סמל. אחר כך תוכלו להוסיף אליה אנשים.</p>
-    <label class="field"><span>שם הקבוצה</span><input id="gName" placeholder="למשל: חברים מהעבודה"></label>
+    <label class="field"><span>שם הקבוצה</span><input id="gName" maxlength="40" placeholder="למשל: חברים מהעבודה"></label>
     <label class="field"><span>סמל</span><select id="gEmoji"><option>👥</option><option>🏠</option><option>🎉</option><option>💼</option><option>⚽</option><option>🎓</option><option>❤️</option></select></label>
-    <div class="actions"><button class="btn btn-g" onclick="closeModal()">ביטול</button><button class="btn btn-p" id="gSave">יצירה</button></div>`);
+    <div class="actions"><button class="btn btn-g" data-close="1">ביטול</button><button class="btn btn-p" id="gSave">יצירה</button></div>`);
   $('gName').focus();
   $('gSave').onclick = async () => {
     const n = $('gName').value.trim(); if (!n) return $('gName').focus();
@@ -588,11 +590,11 @@ function openAddGroup() {
 function openGroupSettings() {
   const g = group(); if (!g) return; const owner = g.owner === me();
   modal(`<h3>${esc(g.emoji || '👥')} ${esc(g.name)}</h3>
-    <label class="field"><span>שם הקבוצה</span><input id="grName" value="${esc(g.name)}"></label>
+    <label class="field"><span>שם הקבוצה</span><input id="grName" maxlength="40" value="${esc(g.name)}"></label>
     <div class="mscroll">${g.members.map(u => { const p = u === me() ? { ...S.profile, name: (S.profile?.name || '') + ' (את/ה)' } : S.people.get(u) || { name: '...' };
       return `<div class="crow">${avatar(p)}<div class="info"><div class="nm">${esc(p.name)}</div>${u === g.owner ? '<span class="tag tag-y">מנהל/ת</span>' : ''}</div>
-      ${owner && u !== me() ? `<button class="btn btn-g btn-sm" data-rm="${u}">הסרה</button>` : ''}</div>`; }).join('')}</div>
-    <div class="actions" style="margin-top:12px"><button class="btn btn-p" id="grSave">שמירה</button><button class="btn btn-g" onclick="closeModal()">סגירה</button>
+      ${owner && u !== me() ? `<button class="btn btn-g btn-sm" data-rm="${esc(u)}">הסרה</button>` : ''}</div>`; }).join('')}</div>
+    <div class="actions" style="margin-top:12px"><button class="btn btn-p" id="grSave">שמירה</button><button class="btn btn-g" data-close="1">סגירה</button>
       <button class="btn btn-d" id="grLeave" style="grid-column:1/-1">${owner && g.members.length === 1 ? 'מחיקת הקבוצה' : 'יציאה מהקבוצה'}</button></div>`);
   $('grSave').onclick = async () => { const n = $('grName').value.trim(); if (!n) return; await updateDoc(doc(db, 'groups', g.id), { name: n }).catch(() => toast('השמירה נכשלה')); closeModal(); };
   document.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => { await updateDoc(doc(db, 'groups', g.id), { members: arrayRemove(b.dataset.rm) }).catch(() => toast('ההסרה נכשלה')); closeModal(); toast('הוסר/ה מהקבוצה'); });
@@ -644,7 +646,7 @@ function openAddPeople() { addTab = 'contacts'; renderAddPeople(); }
 async function renderAddPeople(q = '') {
   const g = group(); if (!g) return;
   const tabs = `<div class="tabs"><button data-t="contacts" class="${addTab === 'contacts' ? 'on' : ''}">📇 מאנשי הקשר</button><button data-t="search" class="${addTab === 'search' ? 'on' : ''}">🔎 לפי מספר או קוד</button></div>`;
-  const foot = `<button class="btn btn-g" style="width:100%;margin-top:10px" onclick="closeModal()">סגירה</button>
+  const foot = `<button class="btn btn-g" style="width:100%;margin-top:10px" data-close="1">סגירה</button>
     <div class="note" style="margin:10px 0 0">🔒 המיקום של אדם יופיע רק אחרי שהוא יאשר את הבקשה, ואז גם הוא יראה את המיקום שלך.</div>`;
   let body = '';
   if (addTab === 'contacts') {
@@ -663,8 +665,8 @@ async function renderAddPeople(q = '') {
           return `<div class="crow">${avatar({ name: c.name, color: uid ? COLORS[i % COLORS.length] : '#94a3b8' })}
             <div class="info"><div class="nm">${esc(c.name)}</div><div class="ph">${esc(prettyPhone(c.phone))}</div>
             <span class="tag ${uid ? 'tag-y' : 'tag-n'}">${uid ? '✓ יש מיקומך' : 'אין את האפליקציה'}</span></div>
-            ${already ? '<span class="badge b-idle">כבר בקבוצה</span>' : uid ? `<button class="btn btn-p btn-sm" data-add="${uid}" data-name="${esc(c.name)}">הוספה</button>`
-              : `<button class="btn btn-s btn-sm" data-inv="${c.phone}" data-name="${esc(c.name)}">הזמנה</button>`}</div>`; }).join('') || '<div class="empty">לא נמצאו אנשי קשר</div>'}</div>`;
+            ${already ? '<span class="badge b-idle">כבר בקבוצה</span>' : uid ? `<button class="btn btn-p btn-sm" data-add="${esc(uid)}" data-name="${esc(c.name)}">הוספה</button>`
+              : `<button class="btn btn-s btn-sm" data-inv="${esc(c.phone)}" data-name="${esc(c.name)}">הזמנה</button>`}</div>`; }).join('') || '<div class="empty">לא נמצאו אנשי קשר</div>'}</div>`;
     }
   } else {
     body = `<input class="search" id="q" placeholder="מספר טלפון או קוד משתמש (6 תווים)" value="${esc(q)}" style="margin-bottom:8px;direction:ltr;text-align:right">
@@ -694,11 +696,11 @@ async function doSearch(v) {
   try {
     if (/^[A-Za-z0-9]{6}$/.test(v) && /[A-Za-z]/.test(v)) { const s = await getDoc(doc(db, 'codes', v.toUpperCase())); uid = s.exists() ? s.data().uid : null; }
     else { phone = normPhone(v); if (!phone) { out.innerHTML = '<div class="empty">צריך מספר טלפון מלא או קוד בן 6 תווים</div>'; return; } await lookupPhones([phone]); uid = phoneUid.get(phone); }
-    if (!uid) { out.innerHTML = `<div class="empty">לא נמצא משתמש.${phone ? '' : ' בדקו שהקוד נכון.'}</div>${phone ? `<button class="btn btn-s" style="width:100%" data-inv="${phone}" data-name="${esc(prettyPhone(phone))}">שליחת הזמנה להוריד את האפליקציה</button>` : ''}`; bindAddButtons(); return; }
+    if (!uid) { out.innerHTML = `<div class="empty">לא נמצא משתמש.${phone ? '' : ' בדקו שהקוד נכון.'}</div>${phone ? `<button class="btn btn-s" style="width:100%" data-inv="${esc(phone)}" data-name="${esc(prettyPhone(phone))}">שליחת הזמנה להוריד את האפליקציה</button>` : ''}`; bindAddButtons(); return; }
     if (uid === me()) { out.innerHTML = '<div class="empty">זה את/ה 🙂</div>'; return; }
     const u = (await getDoc(doc(db, 'users', uid))).data() || {};
     out.innerHTML = `<div class="crow">${avatar(u)}<div class="info"><div class="nm">${esc(u.name)}</div><div class="ph">משתמש/ת במיקומך</div></div>
-      ${inGroupOrPending(uid) ? '<span class="badge b-idle">כבר בקבוצה</span>' : `<button class="btn btn-p btn-sm" data-add="${uid}" data-name="${esc(u.name)}">הוספה</button>`}</div>`;
+      ${inGroupOrPending(uid) ? '<span class="badge b-idle">כבר בקבוצה</span>' : `<button class="btn btn-p btn-sm" data-add="${esc(uid)}" data-name="${esc(u.name)}">הוספה</button>`}</div>`;
     bindAddButtons();
   } catch (e) { out.innerHTML = '<div class="empty">החיפוש נכשל, נסו שוב</div>'; }
 }
@@ -709,7 +711,7 @@ async function sendInvite(toUid, toName, btn) {
     const u = (await getDoc(doc(db, 'users', toUid))).data() || {};
     await setDoc(doc(db, 'invites', g.id + '_' + toUid), {
       gid: g.id, groupName: g.name, groupEmoji: g.emoji || '👥', from: me(), fromName: S.profile?.name || '', fromPhoto: S.profile?.photo || null,
-      to: toUid, toName: u.name || toName, toPhoto: u.photo || null, createdAt: serverTimestamp()
+      to: toUid, toName: String(u.name || toName || '').slice(0, 40), toPhoto: u.photo || null, createdAt: serverTimestamp()
     });
     toast(`נשלחה בקשה ל${u.name || toName}`);
     if (btn) { btn.outerHTML = '<span class="badge b-idle">נשלח ✓</span>'; }
@@ -761,14 +763,14 @@ function fitAll() {
   bmap.fit(pts, 14);
 }
 function renderMapPage() {
-  $('mapFilter').innerHTML = [{ id: 'all', name: 'כולם', emoji: '🌍' }, ...S.groups.values()].map(g => `<button class="chip ${g.id === S.mapFilter ? 'on' : ''}" data-f="${g.id}">${esc(g.emoji || '👥')} ${esc(g.name)}</button>`).join('');
+  $('mapFilter').innerHTML = [{ id: 'all', name: 'כולם', emoji: '🌍' }, ...S.groups.values()].map(g => `<button class="chip ${g.id === S.mapFilter ? 'on' : ''}" data-f="${esc(g.id)}">${esc(g.emoji || '👥')} ${esc(g.name)}</button>`).join('');
   $('mapFilter').querySelectorAll('[data-f]').forEach(b => b.onclick = () => { S.mapFilter = b.dataset.f; S.mapSel = null; renderMapPage(); fitAll(); });
   renderStrip(); updatePcard();
   bmap.setPeople(pins(mapPeople()), S.mapSel); bmap.setMe(S.myPos);
 }
 function renderStrip() {
   const html = (S.myPos ? `<button data-me="1"><div class="av" style="background:#2563eb">📍</div><span>אני</span><small>${isTracking() ? 'משותף' : 'כבוי'}</small></button>` : '') +
-    mapPeople().map(p => { const st = personStatus(view(p), settings.alertMin); return `<button data-id="${p.uid}" class="${p.uid === S.mapSel ? 'on' : ''}">${avatar(p, '', st.dot)}<span>${esc(p.name)}</span><small>${esc(st.badge)}</small></button>`; }).join('');
+    mapPeople().map(p => { const st = personStatus(view(p), settings.alertMin); return `<button data-id="${esc(p.uid)}" class="${p.uid === S.mapSel ? 'on' : ''}">${avatar(p, '', st.dot)}<span>${esc(p.name)}</span><small>${esc(st.badge)}</small></button>`; }).join('');
   if ($('strip')._h === html) return; $('strip')._h = html; $('strip').innerHTML = html;
   $('strip').querySelectorAll('[data-id]').forEach(b => b.onclick = () => selectOnMap(b.dataset.id));
   const mb = $('strip').querySelector('[data-me]'); if (mb) mb.onclick = () => { S.mapSel = null; renderMapPage(); bmap.flyTo([S.myPos.lat, S.myPos.lng], 16); };
@@ -799,8 +801,8 @@ function renderAlerts() {
   renderBanner();
   $('alertsBody').innerHTML = `<h1>התראות</h1>
     ${S.invitesIn.length ? `<div class="sec-t">הזמנות לקבוצות</div><div class="sec">${S.invitesIn.map((i, k) => `<div class="note-row">${avatar({ name: i.fromName, photo: i.fromPhoto, color: '#2563eb' })}
-      <div class="tx"><b>${esc(i.fromName)}</b> מזמין/ה אותך ל${esc(i.groupEmoji)} ${esc(i.groupName)}<div style="display:flex;gap:6px;margin-top:6px"><button class="btn btn-p btn-sm" data-acc="${k}">אישור</button><button class="btn btn-g btn-sm" data-dec="${k}">דחייה</button></div></div></div>`).join('')}</div>` : ''}
-    <div class="sec">${S.notes.map((n, i) => `<div class="note-row ${n.unread ? 'unread' : ''}" data-i="${i}" style="cursor:pointer">
+      <div class="tx"><b>${esc(i.fromName)}</b> מזמין/ה אותך ל${esc(i.groupEmoji)} ${esc(i.groupName)}<div style="display:flex;gap:6px;margin-top:6px"><button class="btn btn-p btn-sm" data-acc="${esc(k)}">אישור</button><button class="btn btn-g btn-sm" data-dec="${esc(k)}">דחייה</button></div></div></div>`).join('')}</div>` : ''}
+    <div class="sec">${S.notes.map((n, i) => `<div class="note-row ${n.unread ? 'unread' : ''}" data-i="${esc(i)}" style="cursor:pointer">
       <div class="note-ic" style="${n.kind === 'bad' ? 'background:var(--badBg)' : ''}">${n.ic}</div><div class="tx">${esc(n.tx)}<div class="tm">${timeAgo(n.t)}</div></div></div>`).join('') || '<div class="empty" style="padding:14px 0">אין התראות עדיין</div>'}</div>
     <p style="font-size:12px;color:var(--muted);padding:0 4px">התראה על עיכוב חריג נשלחת כשמישהו עומד יותר מ-${settings.alertMin} דק׳ על כביש ולא עונה לטלפון. אפשר לשנות בהגדרות.</p>`;
   document.querySelectorAll('[data-acc]').forEach(b => b.onclick = () => confirmInvite(S.invitesIn[+b.dataset.acc]));
@@ -828,7 +830,7 @@ function renderSettings() {
     </div>
     <div class="sec-t">תצוגה</div>
     <div class="sec"><div class="srow"><div class="lbl">ערכת צבעים<small>אוטומטי = לפי הטלפון</small></div>
-      <div class="seg" id="themeSeg">${[['light', 'בהיר'], ['dark', 'כהה'], ['auto', 'אוטומטי']].map(([k, l]) => `<button data-v="${k}" class="${settings.theme === k ? 'on' : ''}">${l}</button>`).join('')}</div></div></div>
+      <div class="seg" id="themeSeg">${[['light', 'בהיר'], ['dark', 'כהה'], ['auto', 'אוטומטי']].map(([k, l]) => `<button data-v="${esc(k)}" class="${settings.theme === k ? 'on' : ''}">${l}</button>`).join('')}</div></div></div>
     <div class="sec-t">התראות</div>
     <div class="sec">
       <div class="srow"><div class="lbl">התראת עיכוב חריג<small>כשמישהו עומד על כביש יותר מ-</small></div>
@@ -867,7 +869,7 @@ function openHome() {
     <button class="btn btn-p" style="width:100%;margin-bottom:10px" id="hHere">📍 אני בבית עכשיו – להשתמש במיקום הנוכחי</button>
     <label class="field"><span>או חיפוש כתובת</span><input id="hQ" placeholder="רחוב, מספר, עיר"></label>
     <div id="hRes"></div>
-    <div class="actions" style="margin-top:8px">${S.priv?.home ? '<button class="btn btn-g" id="hDel">מחיקת הבית</button>' : ''}<button class="btn btn-g" onclick="closeModal()" ${S.priv?.home ? '' : 'style="grid-column:1/-1"'}>סגירה</button></div>`);
+    <div class="actions" style="margin-top:8px">${S.priv?.home ? '<button class="btn btn-g" id="hDel">מחיקת הבית</button>' : ''}<button class="btn btn-g" data-close="1" ${S.priv?.home ? '' : 'style="grid-column:1/-1"'}>סגירה</button></div>`);
   const save = async (h) => { try { await updateDoc(doc(db, 'locations', me()), { home: h }); closeModal(); toast('הבית נשמר ✓'); } catch (e) { toast('השמירה נכשלה'); } };
   $('hHere').onclick = () => {
     const use = p => placeAt(p).then(pl => save({ lat: p.lat, lng: p.lng, label: pl?.name || 'המיקום הנוכחי' }));
@@ -878,7 +880,7 @@ function openHome() {
   let t; $('hQ').oninput = () => { clearTimeout(t); t = setTimeout(async () => {
     const v = $('hQ').value.trim(); if (v.length < 3) return;
     const r = await searchAddress(v).catch(() => []);
-    $('hRes').innerHTML = r.map((x, i) => `<button class="mem" data-h="${i}" style="padding:10px"><div class="info"><div class="st" style="white-space:normal;color:var(--ink)">${esc(x.label)}</div></div></button>`).join('') || '<div class="empty">לא נמצאו תוצאות</div>';
+    $('hRes').innerHTML = r.map((x, i) => `<button class="mem" data-h="${esc(i)}" style="padding:10px"><div class="info"><div class="st" style="white-space:normal;color:var(--ink)">${esc(x.label)}</div></div></button>`).join('') || '<div class="empty">לא נמצאו תוצאות</div>';
     $('hRes').querySelectorAll('[data-h]').forEach(b => b.onclick = () => save(r[+b.dataset.h]));
   }, 500); };
   if ($('hDel')) $('hDel').onclick = () => save(null);
@@ -899,7 +901,7 @@ async function checkBattery(force, silent) {
   modal(`<div style="text-align:center;font-size:44px">🔋</div><h3 style="text-align:center">שהמיקום לא ייעצר</h3>
     <p>אנדרואיד עוצר אפליקציות ברקע כדי לחסוך בסוללה – ואז הקבוצה רואה מיקום ישן. בחלון שייפתח לחצו <b>"אישור"</b> / <b>"לאפשר"</b>.</p>
     ${samsung ? `<div class="note">בסמסונג כדאי גם: הגדרות ← סוללה ← הגבלות שימוש ברקע ← לוודא ש"מיקומך" <b>לא</b> ברשימת "אפליקציות במצב שינה".</div>` : ''}
-    <div class="actions"><button class="btn btn-p" id="battGo">המשך</button><button class="btn btn-g" onclick="closeModal()">אחר כך</button></div>`);
+    <div class="actions"><button class="btn btn-p" id="battGo">המשך</button><button class="btn btn-g" data-close="1">אחר כך</button></div>`);
   $('battGo').onclick = async () => { closeModal(); try { await BatteryOpt.request(); } catch (e) { openLocationSettings(); } };
 }
 
@@ -912,7 +914,7 @@ async function checkUpdate(manual) {
     const r = await fetch(SITE_URL + 'version.json?t=' + Date.now()); const v = await r.json();
     if (v.versionCode > BUILD.code) {
       modal(`<h3>🎉 גרסה חדשה זמינה</h3><p>גרסה ${esc(v.versionName)} מוכנה להורדה (יש לך ${esc(BUILD.name)}).</p>
-        <div class="actions"><button class="btn btn-p" id="upd">הורדה</button><button class="btn btn-g" onclick="closeModal()">אחר כך</button></div>`);
+        <div class="actions"><button class="btn btn-p" id="upd">הורדה</button><button class="btn btn-g" data-close="1">אחר כך</button></div>`);
       $('upd').onclick = () => { closeModal(); openExt(SITE_URL + 'mikumcha.apk'); };
     } else if (manual) toast('יש לך את הגרסה האחרונה ✓');
   } catch (e) { if (manual) toast('לא הצלחתי לבדוק עדכונים'); }

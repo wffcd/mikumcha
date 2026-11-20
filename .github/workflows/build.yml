@@ -5,31 +5,70 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# ברירת מחדל: הרשאות קריאה בלבד. רק שלב הפרסום מקבל הרשאת כתיבה.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: build
   cancel-in-progress: true
 
 jobs:
-  build:
+  # ---------- בדיקות אבטחה: אם משהו נכשל – לא בונים ולא מפרסמים ----------
+  security:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: התקנת חבילות (בדיוק לפי package-lock)
+        run: npm ci
+
+      - name: בדיקת חולשות ידועות בחבילות
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: בדיקת חוקי האבטחה של מסד הנתונים
+        run: npx -y firebase-tools@14 emulators:exec --only firestore --project demo-mikumcha "node --test tests/"
+
+      - name: בדיקה שאין סיסמאות או מפתחות פרטיים בקוד
+        run: |
+          if grep -rInE "(BEGIN (RSA|EC|OPENSSH) PRIVATE KEY|\"private_key\")" --exclude-dir=node_modules --exclude-dir=.git . ; then
+            echo "::error::נמצא מפתח פרטי בקוד"; exit 1
+          fi
+          if git ls-files | grep -E "\.(jks|keystore|p12|pem)$"; then
+            echo "::error::קובץ מפתח לא מוצפן נמצא במאגר"; exit 1
+          fi
+
+  build:
+    needs: security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # נדרש כדי לפרסם לענף gh-pages
     env:
       VERSION_CODE: ${{ github.run_number }}
       VERSION_NAME: 1.0.${{ github.run_number }}
       VITE_VERSION_CODE: ${{ github.run_number }}
       VITE_VERSION_NAME: 1.0.${{ github.run_number }}
-      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: temurin
           java-version: 21
@@ -44,41 +83,53 @@ jobs:
         run: npx cap sync android
 
       - name: פענוח מפתח החתימה
-        if: env.KEYSTORE_PASSWORD != ''
-        run: openssl enc -d -aes-256-cbc -pbkdf2 -in keys/release.jks.enc -out android/app/release.jks -pass env:KEYSTORE_PASSWORD
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_PASSWORD" ]; then echo "::error::חסר הסוד KEYSTORE_PASSWORD"; exit 1; fi
+          openssl enc -d -aes-256-cbc -pbkdf2 -in keys/release.jks.enc -out android/app/release.jks -pass env:KEYSTORE_PASSWORD
 
-      - name: בניית APK
+      - name: בניית APK חתום
         working-directory: android
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
           chmod +x gradlew
-          if [ -f app/release.jks ]; then
-            ./gradlew assembleRelease --no-daemon
-            cp app/build/outputs/apk/release/app-release.apk ../mikumcha.apk
-          else
-            echo "::warning::KEYSTORE_PASSWORD לא הוגדר – בונה גרסת debug"
-            ./gradlew assembleDebug --no-daemon
-            cp app/build/outputs/apk/debug/app-debug.apk ../mikumcha.apk
-          fi
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk ../mikumcha.apk
+          rm -f app/release.jks
+
+      - name: בדיקה שה-APK חתום במפתח הנכון
+        run: |
+          EXPECTED="FC:93:6C:6E:ED:E8:D5:F4:9A:1D:43:63:44:4E:2C:2E:F2:7A:F2:64"
+          GOT=$(keytool -printcert -jarfile mikumcha.apk | grep -m1 "SHA1:" | awk '{print $2}')
+          echo "SHA1: $GOT"
+          if [ "$GOT" != "$EXPECTED" ]; then echo "::error::ה-APK לא חתום במפתח של מיקומך"; exit 1; fi
 
       - name: הכנת אתר ההורדה
         run: |
           mkdir -p _site
           cp -r site/* _site/
           cp -r dist _site/app
+          # מדיניות אבטחת תוכן (CSP) לגרסת האתר: רק קוד מהאתר עצמו ומגוגל רץ
+          CSP="default-src 'self'; script-src 'self' https://apis.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://tile.openstreetmap.org https://server.arcgisonline.com https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com https://router.project-osrm.org https://nominatim.openstreetmap.org; frame-src https://mikumcha-d1ea9.firebaseapp.com https://accounts.google.com https://apis.google.com; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'"
+          sed -i "s|<meta charset=\"UTF-8\">|<meta charset=\"UTF-8\">\n<meta http-equiv=\"Content-Security-Policy\" content=\"$CSP\">\n<meta name=\"referrer\" content=\"strict-origin-when-cross-origin\">|" _site/app/index.html
+          grep -c "Content-Security-Policy" _site/app/index.html
           cp mikumcha.apk _site/mikumcha.apk
           SIZE=$(du -m mikumcha.apk | cut -f1)
-          echo "{\"versionCode\": ${VERSION_CODE}, \"versionName\": \"${VERSION_NAME}\", \"sizeMB\": ${SIZE}, \"date\": \"$(date -u +%Y-%m-%d)\"}" > _site/version.json
+          SHA=$(sha256sum mikumcha.apk | cut -d' ' -f1)
+          echo "{\"versionCode\": ${VERSION_CODE}, \"versionName\": \"${VERSION_NAME}\", \"sizeMB\": ${SIZE}, \"sha256\": \"${SHA}\", \"date\": \"$(date -u +%Y-%m-%d)\"}" > _site/version.json
           touch _site/.nojekyll
 
       - name: פרסום ל-GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./_site
           force_orphan: true
 
       - name: שמירת ה-APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mikumcha-apk
           path: mikumcha.apk

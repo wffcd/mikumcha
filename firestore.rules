@@ -1,51 +1,105 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ---------- עזרים ----------
     function signedIn() { return request.auth != null; }
     function uid() { return request.auth.uid; }
+    function data() { return request.resource.data; }
     function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function isStr(v, min, max) { return v is string && v.size() >= min && v.size() <= max; }
+    function isNum(v) { return v is int || v is float; }
+    function optNum(m, k) { return !(k in m) || m[k] == null || isNum(m[k]); }
+    function isLatLng(m) {
+      return m is map && m.keys().hasAll(['lat', 'lng']) && isNum(m.lat) && isNum(m.lng)
+        && m.lat >= -90 && m.lat <= 90 && m.lng >= -180 && m.lng <= 180;
+    }
+    function isUid(v) { return v is string && v.matches('^[A-Za-z0-9]{10,64}$'); }
+    function isPhoto(v) { return v == null || (v is string && v.size() < 1000 && v.matches('^https://[a-z0-9.-]+[.]googleusercontent[.]com/.*$')); }
+    function docPath(p) { return path('/databases/' + database + '/documents/' + p); }
 
-    // פרופיל ציבורי: שם, תמונה, צבע, קוד
+    // ---------- פרופיל ציבורי ----------
+    // אפשר לקרוא פרופיל לפי מזהה, אבל אי אפשר לקבל רשימה של כל המשתמשים
     match /users/{userId} {
-      allow read: if signedIn();
-      allow write: if signedIn() && uid() == userId;
+      allow get: if signedIn();
+      allow list: if false;
+      allow delete: if signedIn() && uid() == userId;
+      allow create, update: if signedIn() && uid() == userId
+        && data().keys().hasOnly(['name', 'photo', 'color', 'code', 'updatedAt'])
+        && isStr(data().name, 1, 40)
+        && isPhoto(data().get('photo', null))
+        && data().color is string && data().color.matches('^#[0-9a-fA-F]{6}$')
+        && data().code is string && data().code.matches('^[A-Z0-9]{6}$');
     }
 
-    // מספר טלפון -> משתמש (אפשר לבדוק מספר מסוים, אי אפשר לקבל רשימה)
+    // ---------- מספר טלפון / קוד -> משתמש ----------
+    // אפשר לבדוק מספר מסוים, אי אפשר לקבל רשימה. אפשר לרשום רק את המספר/הקוד שמופיע בפרופיל שלך.
     match /phones/{phone} {
       allow get: if signedIn();
       allow list: if false;
-      allow create: if signedIn() && request.resource.data.uid == uid();
-      allow update, delete: if signedIn() && resource.data.uid == uid() && (request.resource == null || request.resource.data.uid == uid());
+      allow create: if signedIn() && phone.matches('^[0-9]{11,15}$')
+        && data().keys().hasOnly(['uid']) && data().uid == uid()
+        && getAfter(docPath('locations/' + uid())).data.phone == phone;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.uid == uid();
     }
     match /codes/{code} {
       allow get: if signedIn();
       allow list: if false;
-      allow create: if signedIn() && request.resource.data.uid == uid();
-      allow update, delete: if signedIn() && resource.data.uid == uid() && (request.resource == null || request.resource.data.uid == uid());
+      allow create: if signedIn() && code.matches('^[A-Z0-9]{6}$')
+        && data().keys().hasOnly(['uid']) && data().uid == uid()
+        && getAfter(docPath('users/' + uid())).data.code == code;
+      allow update: if false;
+      allow delete: if signedIn() && resource.data.uid == uid();
     }
 
-    // מיקום + פרטים פרטיים: רק מי שברשימת הצופים (חברי הקבוצות) רואה
+    // ---------- מיקום ופרטים פרטיים ----------
+    // רק מי שברשימת הצופים (חברי הקבוצות) רואה. רק הבעלים כותב, ורק שדות מוכרים ותקינים.
     match /locations/{userId} {
+      function validLoc() {
+        let d = data();
+        return d.keys().hasOnly(['phone', 'sharing', 'viewers', 'home', 'lat', 'lng', 'acc', 'speed', 'heading', 'ts',
+                                 'stillSince', 'tripStart', 'tripFrom', 'battery', 'charging'])
+          && (!('phone' in d) || (d.phone is string && d.phone.matches('^[0-9]{11,15}$')))
+          && (!('sharing' in d) || d.sharing is bool)
+          && (!('viewers' in d) || (d.viewers is list && d.viewers.size() <= 300))
+          && (!('home' in d) || d.home == null || (isLatLng(d.home) && d.home.keys().hasOnly(['lat', 'lng', 'label']) && (!('label' in d.home) || isStr(d.home.label, 0, 200))))
+          && (!('lat' in d) || (isNum(d.lat) && d.lat >= -90 && d.lat <= 90))
+          && (!('lng' in d) || (isNum(d.lng) && d.lng >= -180 && d.lng <= 180))
+          && optNum(d, 'acc') && optNum(d, 'speed') && optNum(d, 'heading') && optNum(d, 'ts')
+          && optNum(d, 'stillSince') && optNum(d, 'tripStart') && optNum(d, 'battery')
+          && (!('tripFrom' in d) || d.tripFrom == null || (isLatLng(d.tripFrom) && d.tripFrom.keys().hasOnly(['lat', 'lng'])))
+          && (!('charging' in d) || d.charging == null || d.charging is bool);
+      }
       allow read: if signedIn() && (uid() == userId || uid() in resource.data.get('viewers', []));
-      allow write: if signedIn() && uid() == userId;
+      allow create, update: if signedIn() && uid() == userId && validLoc();
+      allow delete: if signedIn() && uid() == userId;
+
       match /trail/{point} {
-        allow read: if signedIn() && (uid() == userId || uid() in get(/databases/$(database)/documents/locations/$(userId)).data.get('viewers', []));
-        allow write: if signedIn() && uid() == userId;
+        allow read: if signedIn() && (uid() == userId || uid() in get(docPath('locations/' + userId)).data.get('viewers', []));
+        allow create: if signedIn() && uid() == userId
+          && data().keys().hasOnly(['lat', 'lng', 'ts', 'speed']) && isLatLng(data()) && isNum(data().ts) && optNum(data(), 'speed');
+        allow update: if false;
+        allow delete: if signedIn() && uid() == userId;
       }
     }
 
+    // ---------- קבוצות ----------
     match /groups/{gid} {
       function members() { return resource.data.members; }
       function newMembers() { return request.resource.data.members; }
-      function invited() { return exists(/databases/$(database)/documents/invites/$(gid + '_' + uid())); }
+      function invited() { return exists(docPath('invites/' + gid + '_' + uid())); }
+      function validMeta() { return isStr(data().name, 1, 40) && isStr(data().emoji, 1, 16); }
 
       allow list: if signedIn() && uid() in resource.data.members;
       allow get: if signedIn() && (uid() in resource.data.members || invited());
-      allow create: if signedIn() && request.resource.data.owner == uid() && request.resource.data.members == [uid()];
+      allow create: if signedIn() && gid.matches('^[A-Za-z0-9]{10,40}$')
+        && data().keys().hasOnly(['name', 'emoji', 'owner', 'members', 'createdAt'])
+        && data().owner == uid() && data().members == [uid()]
+        && validMeta() && data().createdAt == request.time;
       allow delete: if signedIn() && resource.data.owner == uid();
-      allow update: if signedIn() && (
-        // חבר בקבוצה: שינוי שם/סמל
+      allow update: if signedIn() && validMeta() && newMembers().size() <= 50 && (
+        // חבר/ה בקבוצה: שינוי שם/סמל
         (uid() in members() && changed().hasOnly(['name', 'emoji']))
         // מנהל/ת: הסרת חברים
         || (uid() == resource.data.owner && changed().hasOnly(['members', 'name', 'emoji'])
@@ -60,12 +114,21 @@ service cloud.firestore {
       );
     }
 
+    // ---------- הזמנות ----------
+    // שם הקבוצה ושם השולח/ת חייבים להתאים לנתונים האמיתיים – אי אפשר להתחזות.
     match /invites/{id} {
+      function grp() { return get(docPath('groups/' + request.resource.data.gid)).data; }
+      function sender() { return get(docPath('users/' + uid())).data; }
       allow read: if signedIn() && (resource.data.to == uid() || resource.data.from == uid());
-      allow create, update: if signedIn() && request.resource.data.from == uid()
+      allow create, update: if signedIn()
+        && data().keys().hasOnly(['gid', 'groupName', 'groupEmoji', 'from', 'fromName', 'fromPhoto', 'to', 'toName', 'toPhoto', 'createdAt'])
+        && data().from == uid() && isUid(data().to) && data().to != uid()
         && (resource == null || resource.data.from == uid())
-        && id == request.resource.data.gid + '_' + request.resource.data.to
-        && uid() in get(/databases/$(database)/documents/groups/$(request.resource.data.gid)).data.members;
+        && id == data().gid + '_' + data().to
+        && uid() in grp().members && !(data().to in grp().members)
+        && data().groupName == grp().name && data().groupEmoji == grp().emoji
+        && data().fromName == sender().name && data().get('fromPhoto', null) == sender().get('photo', null)
+        && isStr(data().toName, 0, 40) && isPhoto(data().get('toPhoto', null));
       allow delete: if signedIn() && (resource.data.to == uid() || resource.data.from == uid());
     }
   }

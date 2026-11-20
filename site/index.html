@@ -61,10 +61,19 @@ h1{font-size:40px;font-weight:800}
       <li>פותחים את מיקומך, מתחברים עם Google ומאשרים מיקום והתראות.</li>
     </ol>
   </div>
+  <div class="steps" style="margin-top:16px">
+    <h2>🔒 בטוח להתקנה</h2>
+    <ol style="list-style:none;padding:0">
+      <li>✔ האפליקציה נבנית אוטומטית מהקוד הפתוח במאגר <a href="https://github.com/wffcd/mikumcha" style="color:var(--brand)">wffcd/mikumcha</a>, ועוברת בדיקות אבטחה לפני כל פרסום.</li>
+      <li>✔ כל גרסה חתומה דיגיטלית. אנדרואיד לא יתקין "עדכון" שלא נחתם באותה חתימה – כך שאי אפשר להחליף אותה בגרסה מזויפת.</li>
+      <li>✔ הורידו <b>רק</b> מהכתובת הזאת. אם מישהו שולח לכם קובץ "מיקומך" ממקום אחר – אל תתקינו.</li>
+      <li><small>טביעת החתימה (SHA-1): <code style="direction:ltr;display:inline-block;font-size:11px">FC:93:6C:6E:ED:E8:D5:F4:9A:1D:43:63:44:4E:2C:2E:F2:7A:F2:64</code><br>טביעת הקובץ הנוכחי (SHA-256): <code id="sha" style="direction:ltr;display:inline-block;font-size:11px;word-break:break-all">…</code></small></li>
+    </ol>
+  </div>
   <p class="note">עדכונים: כשיוצאת גרסה חדשה, האפליקציה תציע להוריד אותה. ההתקנה מעל הגרסה הקיימת שומרת את כל ההגדרות.</p>
 </div>
 <script>
-fetch('version.json?t='+Date.now()).then(r=>r.json()).then(v=>{document.getElementById('ver').textContent=`גרסה ${v.versionName} · ${v.sizeMB} MB · ${v.date}`}).catch(()=>{});
+fetch('version.json?t='+Date.now()).then(r=>r.json()).then(v=>{document.getElementById('ver').textContent=`גרסה ${v.versionName} · ${v.sizeMB} MB · ${v.date}`;if(v.sha256)document.getElementById('sha').textContent=v.sha256}).catch(()=>{});
 if(/iPhone|iPad|iPod/i.test(navigator.userAgent)) document.getElementById('ios').style.display='block';
 </script>
 </body>
