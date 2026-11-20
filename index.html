@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>מיקומך – הורדת האפליקציה</title>
+<meta name="description" content="מיקומך – לראות איפה האנשים שחשובים לך ומתי הם יגיעו">
+<meta name="theme-color" content="#1d4ed8">
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0b0f17;--card:#151b27;--card2:#1c2433;--ink:#e8ecf3;--muted:#8e9ab0;--brand:#3b82f6;--line:#263042}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Heebo,system-ui,sans-serif;background:radial-gradient(1200px 600px at 50% -200px,#1e3a8a 0%,var(--bg) 60%);color:var(--ink);min-height:100vh}
+.wrap{max-width:560px;margin:0 auto;padding:40px 20px 60px;text-align:center}
+.logo{width:96px;height:96px;border-radius:26px;margin:0 auto 18px;display:block;box-shadow:0 14px 40px rgba(37,99,235,.45)}
+h1{font-size:40px;font-weight:800}
+.tag{color:var(--muted);font-size:17px;margin:6px 0 28px;line-height:1.6}
+.dl{display:flex;align-items:center;justify-content:center;gap:10px;background:var(--brand);color:#fff;text-decoration:none;font-weight:800;font-size:19px;padding:17px;border-radius:16px;box-shadow:0 8px 24px rgba(59,130,246,.4)}
+.ver{color:var(--muted);font-size:13px;margin-top:10px}
+.alt{display:block;margin-top:14px;color:var(--brand);font-weight:500;text-decoration:none;font-size:15px}
+.feat{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:34px 0}
+.f{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 12px;text-align:right}
+.f b{display:block;font-size:15px;margin:6px 0 2px}.f span{font-size:13px;color:var(--muted);line-height:1.5}
+.f i{font-style:normal;font-size:24px}
+.steps{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;text-align:right}
+.steps h2{font-size:19px;margin-bottom:12px}
+.steps ol{padding-right:20px}
+.steps li{margin-bottom:10px;line-height:1.6;font-size:15px}
+.steps li small{color:var(--muted);display:block;font-size:13px}
+.note{font-size:13px;color:var(--muted);margin-top:24px;line-height:1.6}
+.warn{background:#3b2a0a;border:1px solid #6b4e12;color:#fcd34d;border-radius:12px;padding:10px 12px;font-size:14px;margin-top:14px;display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <img class="logo" src="icon-192.png" alt="">
+  <h1>מיקומך</h1>
+  <p class="tag">לראות איפה האנשים שחשובים לך, מתי הם יגיעו,<br>ולדעת מיד אם משהו לא בסדר בדרך.</p>
+
+  <a class="dl" href="mikumcha.apk" id="dl">⬇ הורדה לאנדרואיד</a>
+  <div class="ver" id="ver">&nbsp;</div>
+  <div class="warn" id="ios">באייפון אפשר להשתמש בגרסת האתר (קישור למטה). אפליקציית האנדרואיד לא מתאימה לאייפון.</div>
+  <a class="alt" href="app/">או פתיחת גרסת האתר בדפדפן ←</a>
+
+  <div class="feat">
+    <div class="f"><i>👨‍👩‍👧</i><b>קבוצות</b><span>משפחה, חברים, עבודה – כל אחד רואה רק את הקבוצות שלו</span></div>
+    <div class="f"><i>🕒</i><b>זמן הגעה</b><span>כמה נשאר ומתי יגיעו, כמו בוויז</span></div>
+    <div class="f"><i>🤔</i><b>למה מתעכב?</b><span>פקק, עצירה, או משהו לא בסדר</span></div>
+    <div class="f"><i>🔒</i><b>רק באישור</b><span>כל אחד מאשר למי להראות את המיקום שלו</span></div>
+  </div>
+
+  <div class="steps">
+    <h2>איך מתקינים?</h2>
+    <ol>
+      <li>לוחצים <b>"הורדה לאנדרואיד"</b> למעלה.<small>אם הדפדפן שואל – "להוריד בכל זאת".</small></li>
+      <li>פותחים את הקובץ <b>mikumcha.apk</b> מההתראה או מתיקיית ההורדות.</li>
+      <li>אם מופיעה הודעה שאסור להתקין מהמקור הזה: <b>הגדרות ← לאפשר מהמקור הזה</b>, וחוזרים אחורה.<small>זה קורה כי האפליקציה לא מחנות Google Play. צריך לעשות את זה פעם אחת.</small></li>
+      <li>לוחצים <b>"התקנה"</b>. אם Play Protect שואל – <b>"התקנה בכל זאת"</b>.</li>
+      <li>פותחים את מיקומך, מתחברים עם Google ומאשרים מיקום והתראות.</li>
+    </ol>
+  </div>
+  <div class="steps" style="margin-top:16px">
+    <h2>🔒 בטוח להתקנה</h2>
+    <ol style="list-style:none;padding:0">
+      <li>✔ האפליקציה נבנית אוטומטית מהקוד הפתוח במאגר <a href="https://github.com/wffcd/mikumcha" style="color:var(--brand)">wffcd/mikumcha</a>, ועוברת בדיקות אבטחה לפני כל פרסום.</li>
+      <li>✔ כל גרסה חתומה דיגיטלית. אנדרואיד לא יתקין "עדכון" שלא נחתם באותה חתימה – כך שאי אפשר להחליף אותה בגרסה מזויפת.</li>
+      <li>✔ הורידו <b>רק</b> מהכתובת הזאת. אם מישהו שולח לכם קובץ "מיקומך" ממקום אחר – אל תתקינו.</li>
+      <li><small>טביעת החתימה (SHA-1): <code style="direction:ltr;display:inline-block;font-size:11px">FC:93:6C:6E:ED:E8:D5:F4:9A:1D:43:63:44:4E:2C:2E:F2:7A:F2:64</code><br>טביעת הקובץ הנוכחי (SHA-256): <code id="sha" style="direction:ltr;display:inline-block;font-size:11px;word-break:break-all">…</code></small></li>
+    </ol>
+  </div>
+  <p class="note">עדכונים: כשיוצאת גרסה חדשה, האפליקציה תציע להוריד אותה. ההתקנה מעל הגרסה הקיימת שומרת את כל ההגדרות.</p>
+</div>
+<script>
+fetch('version.json?t='+Date.now()).then(r=>r.json()).then(v=>{document.getElementById('ver').textContent=`גרסה ${v.versionName} · ${v.sizeMB} MB · ${v.date}`;if(v.sha256)document.getElementById('sha').textContent=v.sha256}).catch(()=>{});
+if(/iPhone|iPad|iPod/i.test(navigator.userAgent)) document.getElementById('ios').style.display='block';
+</script>
+</body>
+</html>
