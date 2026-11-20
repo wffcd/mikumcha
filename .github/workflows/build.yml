@@ -102,7 +102,9 @@ jobs:
       - name: בדיקה שה-APK חתום במפתח הנכון
         run: |
           EXPECTED="FC:93:6C:6E:ED:E8:D5:F4:9A:1D:43:63:44:4E:2C:2E:F2:7A:F2:64"
-          GOT=$(keytool -printcert -jarfile mikumcha.apk | grep -m1 "SHA1:" | awk '{print $2}')
+          APKSIGNER=$(ls -d $ANDROID_HOME/build-tools/*/ | sort -V | tail -1)apksigner
+          $APKSIGNER verify mikumcha.apk
+          GOT=$($APKSIGNER verify --print-certs mikumcha.apk | grep -m1 "SHA-1 digest" | awk '{print $NF}' | tr 'a-f' 'A-F' | sed 's/../&:/g;s/:$//')
           echo "SHA1: $GOT"
           if [ "$GOT" != "$EXPECTED" ]; then echo "::error::ה-APK לא חתום במפתח של מיקומך"; exit 1; fi
 
