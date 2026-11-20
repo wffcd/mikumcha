@@ -37,7 +37,7 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
 
       - name: בדיקת חוקי האבטחה של מסד הנתונים
-        run: npx -y firebase-tools@14 emulators:exec --only firestore --project demo-mikumcha "node --test tests/"
+        run: npx -y firebase-tools@14 emulators:exec --only firestore --project demo-mikumcha "node --test tests/rules.test.mjs"
 
       - name: בדיקה שאין סיסמאות או מפתחות פרטיים בקוד
         run: |
